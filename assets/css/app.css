@@ -772,7 +772,10 @@ body::before {
 }
 
 .seat-cards .influence-card.role-duke.revealed { background: var(--duke); }
-.seat-cards .influence-card.role-assassin.revealed { background: var(--assassin); }
+.seat-cards .influence-card.role-assassin.revealed {
+  background: linear-gradient(160deg, #2a2520 0%, #14110f 100%);
+  border-color: rgba(244, 237, 224, 0.34);
+}
 .seat-cards .influence-card.role-captain.revealed { background: var(--captain); }
 .seat-cards .influence-card.role-ambassador.revealed { background: var(--ambassador); }
 .seat-cards .influence-card.role-contessa.revealed { background: var(--contessa); }
@@ -953,6 +956,11 @@ body::before {
   background: rgba(26, 23, 20, 0.84);
   box-shadow: none;
   height: 1.5px;
+}
+
+.seat-cards .influence-card.role-assassin.revealed::before,
+.seat-cards .influence-card.role-assassin.revealed::after {
+  background: rgba(244, 237, 224, 0.92);
 }
 
 .action-dock {
