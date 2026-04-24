@@ -94,6 +94,17 @@ body::before {
   line-height: 1.4;
 }
 
+.landing-error {
+  margin-top: 1.5rem;
+  max-width: 38rem;
+  border: 1px solid rgba(184, 50, 50, 0.35);
+  background: rgba(184, 50, 50, 0.08);
+  color: #8f2323;
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
 .landing-form,
 .landing-grid,
 .landing-room-row,

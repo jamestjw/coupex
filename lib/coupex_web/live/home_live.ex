@@ -12,24 +12,54 @@ defmodule CoupexWeb.HomeLive do
      |> assign(:page_title, "Enter the Court")
      |> assign(:visitor_id, session["visitor_id"])
      |> assign(:form, form)
+     |> assign(:form_error, nil)
      |> assign(:current_scope, nil)}
   end
 
   @impl true
-  def handle_event("create_room", %{"entry" => %{"name" => name}}, socket) do
-    case RoomServer.create_room(socket.assigns.visitor_id, name, self()) do
-      {:ok, code} -> {:noreply, push_navigate(socket, to: ~p"/rooms/#{code}")}
-      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+  def handle_event(
+        "submit_entry",
+        %{"entry" => %{"name" => name, "room_code" => room_code}, "intent" => intent},
+        socket
+      ) do
+    with :ok <- validate_name(name) do
+      case intent do
+        "create" ->
+          case RoomServer.create_room(socket.assigns.visitor_id, name, self()) do
+            {:ok, code} -> {:noreply, push_navigate(socket, to: ~p"/rooms/#{code}")}
+            {:error, message} -> {:noreply, assign(socket, :form_error, message)}
+          end
+
+        "join" ->
+          with :ok <- validate_room_code(room_code),
+               {:ok, _snapshot} <-
+                 RoomServer.join_room(room_code, socket.assigns.visitor_id, name, self()) do
+            {:noreply, push_navigate(socket, to: ~p"/rooms/#{String.upcase(String.trim(room_code))}")}
+          else
+            {:error, message} -> {:noreply, assign(socket, :form_error, message)}
+          end
+
+        _ ->
+          {:noreply, assign(socket, :form_error, "Choose a valid action.")}
+      end
+    else
+      {:error, message} -> {:noreply, assign(socket, :form_error, message)}
     end
   end
 
-  def handle_event("join_room", %{"entry" => %{"name" => name, "room_code" => room_code}}, socket) do
-    case RoomServer.join_room(room_code, socket.assigns.visitor_id, name, self()) do
-      {:ok, _snapshot} ->
-        {:noreply, push_navigate(socket, to: ~p"/rooms/#{String.upcase(String.trim(room_code))}")}
+  defp validate_name(name) do
+    if String.trim(to_string(name)) == "" do
+      {:error, "Enter your name before creating or joining a room."}
+    else
+      :ok
+    end
+  end
 
-      {:error, message} ->
-        {:noreply, put_flash(socket, :error, message)}
+  defp validate_room_code(room_code) do
+    if String.trim(to_string(room_code)) == "" do
+      {:error, "Enter a room code before joining a room."}
+    else
+      :ok
     end
   end
 
@@ -46,7 +76,11 @@ defmodule CoupexWeb.HomeLive do
             and outlast the court.
           </p>
 
-          <.form for={@form} id="entry-form" class="landing-form">
+          <div :if={@form_error} class="landing-error" id="landing-error" role="alert">
+            {@form_error}
+          </div>
+
+          <.form for={@form} id="entry-form" class="landing-form" phx-submit="submit_entry">
             <div class="landing-grid">
               <div class="landing-field">
                 <.input
@@ -59,7 +93,7 @@ defmodule CoupexWeb.HomeLive do
               </div>
 
               <div class="landing-button-wrap">
-                <button type="submit" class="court-button court-button-dark landing-primary-button" phx-click="create_room">
+                <button type="submit" name="intent" value="create" class="court-button court-button-dark landing-primary-button">
                   Create Room
                 </button>
               </div>
@@ -77,7 +111,7 @@ defmodule CoupexWeb.HomeLive do
               </div>
 
               <div class="landing-button-wrap">
-                <button type="submit" class="court-button landing-secondary-button" phx-click="join_room">
+                <button type="submit" name="intent" value="join" class="court-button landing-secondary-button">
                   Join Room
                 </button>
               </div>
