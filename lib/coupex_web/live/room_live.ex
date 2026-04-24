@@ -274,25 +274,18 @@ defmodule CoupexWeb.RoomLive do
 
                     <div class="dock-hand">
                       <%= for {influence, index} <- Enum.with_index(@snapshot.game.you.influences) do %>
-                        <button
-                          type="button"
+                        <.influence_action_card
                           id={"your-influence-#{index}"}
-                          class={[
-                            "hand-card",
-                            influence.role && role_class(influence.role),
-                            influence.revealed && "revealed"
-                          ]}
-                          phx-click="reveal"
-                          phx-value-index={index}
+                          role={influence.role}
+                          revealed={influence.revealed}
+                          variant="dock"
+                          index={index}
+                          phx_click="reveal"
                           disabled={
                             @snapshot.game.interaction.kind != :reveal or
                               not @snapshot.game.interaction.your_turn or influence.revealed
                           }
-                        >
-                          <span class="hand-card-index">{role_index(influence.role)}</span>
-                          <span class="hand-card-art"></span>
-                          <span class="hand-card-name">{influence.role || "Hidden"}</span>
-                        </button>
+                        />
                       <% end %>
                     </div>
 
@@ -398,30 +391,6 @@ defmodule CoupexWeb.RoomLive do
                         <% end %>
                       </p>
                     </div>
-
-                    <div
-                      :if={
-                        @snapshot.game.interaction.kind == :exchange and
-                          @snapshot.game.interaction.your_turn
-                      }
-                      class="exchange-card"
-                    >
-                      <p>Keep exactly {@snapshot.game.interaction.keep_count} cards.</p>
-                      <div class="exchange-options">
-                        <button
-                          :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.options)}
-                          type="button"
-                          class={["exchange-option", index in @exchange_selection && "selected"]}
-                          phx-click="toggle_exchange"
-                          phx-value-index={index}
-                        >
-                          {role}
-                        </button>
-                      </div>
-                      <button type="button" class="court-button small" phx-click="confirm_exchange">
-                        Confirm Exchange
-                      </button>
-                    </div>
                   </div>
 
                   <div class="turn-banner">
@@ -459,6 +428,52 @@ defmodule CoupexWeb.RoomLive do
                   <span>Turn {@snapshot.game.turn_number}</span>
                 </div>
               </aside>
+            </div>
+
+            <div
+              :if={
+                @snapshot.game.interaction.kind == :exchange and
+                  @snapshot.game.interaction.your_turn
+              }
+              id="exchange-modal"
+              class="drama-overlay"
+            >
+              <div class="drama-sheet exchange-sheet">
+                <p class="drama-eyebrow">Court Exchange</p>
+                <h2 class="drama-title">Choose Your Influences</h2>
+                <p class="drama-body exchange-body">
+                  Keep exactly {@snapshot.game.interaction.keep_count}
+                  {if @snapshot.game.interaction.keep_count == 1, do: " card", else: " cards"}.
+                </p>
+
+                <div class="exchange-grid" id="exchange-grid">
+                  <.influence_action_card
+                    :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.options)}
+                    id={"exchange-option-#{index}"}
+                    role={role}
+                    revealed={false}
+                    variant="exchange"
+                    selected={index in @exchange_selection}
+                    index={index}
+                    phx_click="toggle_exchange"
+                  />
+                </div>
+
+                <div class="exchange-footer">
+                  <p>
+                    Selected <strong>{length(@exchange_selection)}</strong>
+                    / {@snapshot.game.interaction.keep_count}
+                  </p>
+                  <button
+                    type="button"
+                    class="court-button small drama-button primary"
+                    phx-click="confirm_exchange"
+                    disabled={length(@exchange_selection) != @snapshot.game.interaction.keep_count}
+                  >
+                    Confirm Exchange
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div
@@ -770,6 +785,35 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp influence_action_card(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:selected, fn -> false end)
+      |> assign_new(:disabled, fn -> false end)
+
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      class={[
+        "hand-card",
+        "court-influence-card",
+        @variant == "exchange" && "court-influence-card-exchange",
+        @role && role_class(@role),
+        @revealed && "revealed",
+        @selected && "selected"
+      ]}
+      phx-click={@phx_click}
+      phx-value-index={@index}
+      disabled={@disabled}
+    >
+      <span class="hand-card-index">{role_index(@role)}</span>
+      <span class="hand-card-art"></span>
+      <span class="hand-card-name">{@role || "Hidden"}</span>
+    </button>
+    """
+  end
 
   defp claim_key(nil), do: nil
 
