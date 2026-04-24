@@ -233,20 +233,29 @@ defmodule CoupexWeb.RoomLive do
 
                         <div class="seat-cards">
                           <%= for influence <- player.influences do %>
-                            <div class={[
-                              "influence-card",
-                              influence.role && role_class(influence.role),
-                              influence.hidden && "hidden",
-                              influence.revealed && "revealed"
-                            ]}>
-                              <%= cond do %>
-                                <% influence.hidden -> %>
-                                  <span>?</span>
-                                <% influence.role -> %>
-                                  <span>{influence.role}</span>
-                                <% true -> %>
-                                  <span>Hidden</span>
-                              <% end %>
+                            <% tooltip = revealed_influence_tooltip(influence) %>
+                            <div
+                              class={[
+                                "court-tooltip-wrap",
+                                tooltip && "court-tooltip-trigger"
+                              ]}
+                              data-tooltip={tooltip}
+                            >
+                              <div class={[
+                                "influence-card",
+                                influence.role && role_class(influence.role),
+                                influence.hidden && "hidden",
+                                influence.revealed && "revealed"
+                              ]}>
+                                <%= cond do %>
+                                  <% influence.hidden -> %>
+                                    <span>?</span>
+                                  <% influence.role -> %>
+                                    <span>{influence.role}</span>
+                                  <% true -> %>
+                                    <span>Hidden</span>
+                                <% end %>
+                              </div>
                             </div>
                           <% end %>
                         </div>
@@ -752,6 +761,11 @@ defmodule CoupexWeb.RoomLive do
   defp role_index("Ambassador"), do: "IV"
   defp role_index("Contessa"), do: "V"
   defp role_index(_role), do: "?"
+
+  defp revealed_influence_tooltip(%{revealed: true, role: role}) when is_binary(role),
+    do: "Revealed: #{role}"
+
+  defp revealed_influence_tooltip(_influence), do: nil
 
   defp dock_status_label(game) do
     cond do

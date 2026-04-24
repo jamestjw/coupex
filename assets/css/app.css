@@ -50,6 +50,57 @@ body::before {
   background-size: 3px 3px, 7px 7px;
 }
 
+.court-tooltip-wrap {
+  position: relative;
+}
+
+@media (hover: hover) {
+  .court-tooltip-trigger::before,
+  .court-tooltip-trigger::after {
+    position: absolute;
+    left: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease;
+    z-index: 35;
+  }
+
+  .court-tooltip-trigger::before {
+    content: attr(data-tooltip);
+    bottom: calc(100% + 0.5rem);
+    transform: translate(-50%, 0.2rem);
+    min-width: max-content;
+    max-width: 11rem;
+    padding: 0.32rem 0.52rem;
+    border: 1px solid rgba(26, 23, 20, 0.82);
+    background: rgba(244, 237, 224, 0.98);
+    color: var(--ink);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.52rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    box-shadow: 0 10px 20px -12px rgba(26, 23, 20, 0.56);
+  }
+
+  .court-tooltip-trigger::after {
+    content: "";
+    bottom: calc(100% + 0.24rem);
+    transform: translate(-50%, 0.2rem);
+    border-left: 0.24rem solid transparent;
+    border-right: 0.24rem solid transparent;
+    border-top: 0.24rem solid rgba(26, 23, 20, 0.82);
+  }
+
+  .court-tooltip-trigger:hover::before,
+  .court-tooltip-trigger:hover::after,
+  .court-tooltip-trigger:focus-within::before,
+  .court-tooltip-trigger:focus-within::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 .landing-shell,
 .lobby-shell {
   min-height: 100vh;
@@ -694,6 +745,38 @@ body::before {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset;
 }
 
+.seat-cards .influence-card {
+  width: 1.9rem;
+  min-width: 1.9rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-radius: 2px;
+  border-color: rgba(26, 23, 20, 0.65);
+  background:
+    linear-gradient(135deg, transparent 45%, rgba(212, 168, 74, 0.2) 50%, transparent 55%),
+    var(--ink);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset;
+}
+
+.seat-cards .influence-card.hidden {
+  color: transparent;
+}
+
+.seat-cards .influence-card span {
+  display: none;
+}
+
+.seat-cards .influence-card.revealed {
+  color: var(--paper);
+  border-color: rgba(26, 23, 20, 0.7);
+}
+
+.seat-cards .influence-card.role-duke.revealed { background: var(--duke); }
+.seat-cards .influence-card.role-assassin.revealed { background: var(--assassin); }
+.seat-cards .influence-card.role-captain.revealed { background: var(--captain); }
+.seat-cards .influence-card.role-ambassador.revealed { background: var(--ambassador); }
+.seat-cards .influence-card.role-contessa.revealed { background: var(--contessa); }
+
 .hand-card {
   position: relative;
   width: 4.3rem;
@@ -829,7 +912,6 @@ body::before {
 .influence-card.role-ambassador.revealed { background: rgba(39, 99, 42, 0.12); }
 .influence-card.role-contessa.revealed { background: rgba(194, 138, 46, 0.12); }
 
-.influence-card.revealed,
 .hand-card.revealed,
 .exchange-option.selected {
   background: rgba(184, 50, 50, 0.1);
@@ -864,6 +946,13 @@ body::before {
 .influence-card.revealed::after,
 .hand-card.revealed::after {
   transform: translate(-50%, -50%) rotate(-33deg);
+}
+
+.seat-cards .influence-card.revealed::before,
+.seat-cards .influence-card.revealed::after {
+  background: rgba(26, 23, 20, 0.84);
+  box-shadow: none;
+  height: 1.5px;
 }
 
 .action-dock {
