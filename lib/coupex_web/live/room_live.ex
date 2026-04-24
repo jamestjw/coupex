@@ -8,26 +8,36 @@ defmodule CoupexWeb.RoomLive do
     viewer_id = session["visitor_id"]
     player_name = Map.get(params, "name")
 
-    if connected?(socket), do: RoomServer.subscribe(code)
+    base_socket =
+      socket
+      |> assign(:viewer_id, viewer_id)
+      |> assign(:lobby_error, nil)
+      |> assign(:claim_response_key, nil)
+      |> assign(:exchange_selection, [])
+      |> assign(:selected_action, nil)
+      |> assign(:current_scope, nil)
 
-    case RoomServer.join_room(code, viewer_id, player_name, self()) do
-      {:ok, snapshot} ->
-        {:ok,
-         socket
-         |> assign(:page_title, "Room #{snapshot.code}")
-         |> assign(:viewer_id, viewer_id)
-         |> assign(:snapshot, snapshot)
-         |> assign(:lobby_error, nil)
-         |> assign(:claim_response_key, nil)
-         |> assign(:exchange_selection, [])
-         |> assign(:selected_action, nil)
-         |> assign(:current_scope, nil)}
+    if connected?(socket) do
+      RoomServer.subscribe(code)
 
-      {:error, message} ->
-        {:ok,
-         socket
-         |> put_flash(:error, message)
-         |> push_navigate(to: ~p"/")}
+      case RoomServer.join_room(code, viewer_id, player_name, self()) do
+        {:ok, snapshot} ->
+          {:ok,
+           base_socket
+           |> assign(:page_title, "Room #{snapshot.code}")
+           |> assign(:snapshot, snapshot)}
+
+        {:error, message} ->
+          {:ok,
+           base_socket
+           |> put_flash(:error, message)
+           |> push_navigate(to: ~p"/")}
+      end
+    else
+      {:ok,
+       base_socket
+       |> assign(:page_title, "Room #{String.upcase(String.trim(code))}")
+       |> assign(:snapshot, disconnected_snapshot(code, viewer_id))}
     end
   end
 
@@ -880,6 +890,18 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp disconnected_snapshot(code, viewer_id) do
+    %{
+      code: code |> to_string() |> String.trim() |> String.upcase(),
+      viewer_id: viewer_id,
+      host_id: nil,
+      player_count: 0,
+      can_start: false,
+      lobby_players: [],
+      game: nil
+    }
+  end
 
   defp parse_non_negative_integer(value) do
     case Integer.parse(to_string(value)) do
