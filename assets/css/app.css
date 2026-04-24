@@ -1391,6 +1391,40 @@ body::before {
   color: var(--ink-soft);
 }
 
+.actor-block-waiting {
+  background: rgba(255, 250, 241, 0.9);
+}
+
+.actor-block-waiting p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.actor-block-waiting strong {
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 1.08rem;
+}
+
+.waiting-action-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.08rem 0.45rem;
+  margin-left: 0.1rem;
+  border: 1px solid rgba(26, 23, 20, 0.58);
+  background: rgba(255, 250, 241, 0.92);
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 1rem;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.waiting-action-chip.tone-foreign-aid { color: #6b4c12; border-color: rgba(107, 76, 18, 0.45); }
+.waiting-action-chip.tone-assassinate { color: var(--assassin); }
+.waiting-action-chip.tone-steal { color: var(--captain); border-color: rgba(30, 78, 122, 0.45); }
+.waiting-action-chip.tone-tax { color: var(--duke); border-color: rgba(184, 50, 50, 0.45); }
+
 .response-card p,
 .exchange-card p {
   margin: 0;

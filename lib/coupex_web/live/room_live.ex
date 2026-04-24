@@ -360,6 +360,35 @@ defmodule CoupexWeb.RoomLive do
                     <div
                       :if={
                         @snapshot.game.interaction.kind == :block and
+                          @snapshot.game.interaction.pending.actor_id == @viewer_id
+                      }
+                      id="action-block-actor-waiting"
+                      class="response-card actor-block-waiting"
+                    >
+                      <p>
+                        <%= if @snapshot.game.interaction.waiting_on_name do %>
+                          Waiting for <strong>{@snapshot.game.interaction.waiting_on_name}</strong>
+                          to decide whether to block <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.pending.action_label}
+                          </span>.
+                        <% else %>
+                          Waiting for other players to decide whether to block <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.pending.action_label}
+                          </span>.
+                        <% end %>
+                      </p>
+                    </div>
+
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :block and
+                          @snapshot.game.interaction.pending.actor_id != @viewer_id and
                           @claim_response_key == claim_key(@snapshot.game) and
                           @snapshot.game.interaction.awaiting_others
                       }
@@ -479,6 +508,7 @@ defmodule CoupexWeb.RoomLive do
             <div
               :if={
                 @snapshot.game.interaction.kind == :block and
+                  @snapshot.game.interaction.pending.actor_id != @viewer_id and
                   @claim_response_key != claim_key(@snapshot.game)
               }
               id="action-block-modal"
@@ -896,7 +926,8 @@ defmodule CoupexWeb.RoomLive do
     cond do
       game.status == :finished -> "Court Concluded"
       game.interaction.kind == :action and game.interaction.your_turn -> "Your Move"
-      true -> "Watching"
+      game.interaction.kind == :action -> "Awaiting Turn"
+      true -> "Awaiting Response"
     end
   end
 
@@ -916,6 +947,12 @@ defmodule CoupexWeb.RoomLive do
   defp action_class("steal"), do: "action-steal"
   defp action_class("exchange"), do: "action-exchange"
   defp action_class(_action), do: nil
+
+  defp waiting_action_tone("foreign_aid"), do: "tone-foreign-aid"
+  defp waiting_action_tone("assassinate"), do: "tone-assassinate"
+  defp waiting_action_tone("steal"), do: "tone-steal"
+  defp waiting_action_tone("tax"), do: "tone-tax"
+  defp waiting_action_tone(_action), do: "tone-default"
 
   defp action_tag("income"), do: "+1"
   defp action_tag("foreign_aid"), do: "+2"
