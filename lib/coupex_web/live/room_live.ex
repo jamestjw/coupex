@@ -19,6 +19,7 @@ defmodule CoupexWeb.RoomLive do
          |> assign(:snapshot, snapshot)
          |> assign(:lobby_error, nil)
          |> assign(:exchange_selection, [])
+         |> assign(:selected_action, nil)
          |> assign(:current_scope, nil)}
 
       {:error, message} ->
@@ -61,7 +62,19 @@ defmodule CoupexWeb.RoomLive do
     action = params["action"]
     target_id = blank_to_nil(params["target"])
 
-    room_action(socket, fn s -> RoomServer.take_action(s.code, s.viewer_id, action, target_id) end)
+    room_action(
+      socket,
+      fn s -> RoomServer.take_action(s.code, s.viewer_id, action, target_id) end,
+      fn updated_socket -> assign(updated_socket, :selected_action, nil) end
+    )
+  end
+
+  def handle_event("select_action", %{"action" => action}, socket) do
+    {:noreply, assign(socket, :selected_action, action)}
+  end
+
+  def handle_event("cancel_action", _, socket) do
+    {:noreply, assign(socket, :selected_action, nil)}
   end
 
   def handle_event("reveal", %{"index" => index}, socket) do
@@ -96,7 +109,24 @@ defmodule CoupexWeb.RoomLive do
   def render(assigns) do
     assigns =
       if assigns.snapshot.game do
-        assign(assigns, :opponents, Enum.reject(assigns.snapshot.game.players, & &1.you))
+        actions = assigns.snapshot.game.you.available_actions
+
+        order = %{
+          "income" => 1,
+          "foreign_aid" => 2,
+          "coup" => 3,
+          "tax" => 4,
+          "assassinate" => 5,
+          "steal" => 6,
+          "exchange" => 7
+        }
+
+        sorted_actions = Enum.sort_by(actions, &Map.get(order, &1.id, 99))
+
+        assigns
+        |> assign(:opponents, Enum.reject(assigns.snapshot.game.players, & &1.you))
+        |> assign(:all_actions, sorted_actions)
+        |> assign(:selected_action_map, Enum.find(actions, &(&1.id == assigns.selected_action)))
       else
         assigns
       end
@@ -130,15 +160,6 @@ defmodule CoupexWeb.RoomLive do
 
             <div class="court-app">
               <section class="table-panel">
-                <div class="lobby-strip">
-                  <%= for player <- @snapshot.lobby_players do %>
-                    <div class={["lobby-chip", player.host && "host"]}>
-                      <span>{player.name}</span>
-                      <span :if={player.host}>Host</span>
-                    </div>
-                  <% end %>
-                </div>
-
                 <div class="table-stage">
                   <div class="table-felt"></div>
                   <div class="table-wordmark">Coup</div>
@@ -164,20 +185,36 @@ defmodule CoupexWeb.RoomLive do
 
                   <div class={seat_grid_class(length(@opponents))}>
                     <%= for player <- @opponents do %>
-                      <article class={[
-                        "seat-card",
-                        player.id == @snapshot.game.active_player_id && "seat-active",
-                        player.eliminated && "seat-out"
-                      ]}>
-                        <div class="seat-head">
-                          <div>
-                            <p class="seat-name">{player.name}</p>
-                            <p class="seat-meta">
-                              {player.coins} coin{if player.coins != 1, do: "s"} · {player.alive_count} influence
-                            </p>
-                          </div>
+                      <article
+                        class={[
+                          "seat-card",
+                          player.id == @snapshot.game.active_player_id && "seat-active",
+                          player.eliminated && "seat-out",
+                          @selected_action_map && not player.eliminated && "is-targetable"
+                        ]}
+                        phx-click={
+                          if @selected_action_map && not player.eliminated, do: "take_action"
+                        }
+                        phx-value-action={@selected_action_map && @selected_action_map.id}
+                        phx-value-target={player.id}
+                      >
+                        <div class="seat-avatar-wrap">
                           <div class="seat-avatar">{String.first(player.name)}</div>
+                          <div class="seat-avatar-mark">{player.alive_count}</div>
                         </div>
+
+                        <p class="seat-name">{player.name}</p>
+
+                        <p class="seat-role-line">
+                          Player · {player.alive_count} {if player.alive_count == 1,
+                            do: "card",
+                            else: "cards"}
+                        </p>
+
+                        <p class="seat-coin-line">
+                          <span class="seat-coin-dot"></span>
+                          <span>{player.coins} coin{if player.coins != 1, do: "s"}</span>
+                        </p>
 
                         <div class="seat-cards">
                           <%= for influence <- player.influences do %>
@@ -205,13 +242,7 @@ defmodule CoupexWeb.RoomLive do
 
                 <section class="action-dock">
                   <div class="dock-left">
-                    <div class="dock-summary">
-                      <p>Your hand</p>
-                      <strong>{@snapshot.game.you.name}</strong>
-                      <span>
-                        {@snapshot.game.you.coins} coin{if @snapshot.game.you.coins != 1, do: "s"} · {@snapshot.game.you.alive_count} influence
-                      </span>
-                    </div>
+                    <p class="dock-player-line">{@snapshot.game.you.name} · Seat 1</p>
 
                     <div class="dock-hand">
                       <%= for {influence, index} <- Enum.with_index(@snapshot.game.you.influences) do %>
@@ -236,9 +267,19 @@ defmodule CoupexWeb.RoomLive do
                         </button>
                       <% end %>
                     </div>
+
+                    <p class="dock-coin-line">
+                      <span class="dock-coin-icon"></span>
+                      <span>
+                        {@snapshot.game.you.coins} coin{if @snapshot.game.you.coins != 1, do: "s"}
+                      </span>
+                      <span :if={@snapshot.game.you.coins >= 10} class="dock-warning">Must Coup</span>
+                    </p>
                   </div>
 
                   <div class="dock-center">
+                    <p class="dock-status-label">{dock_status_label(@snapshot.game)}</p>
+
                     <div
                       :if={
                         @snapshot.game.interaction.kind == :action and
@@ -246,37 +287,36 @@ defmodule CoupexWeb.RoomLive do
                       }
                       class="dock-actions"
                     >
-                      <%= for action <- @snapshot.game.you.available_actions do %>
-                        <%= if action.target do %>
-                          <form
-                            id={"action-form-#{action.id}"}
-                            class="targeted-action-form"
-                            phx-submit="take_action"
-                          >
-                            <input type="hidden" name="action" value={action.id} />
-                            <label>
-                              <span>{action.label}</span>
-                              <select name="target" class="court-select">
-                                <option value="">Target</option>
-                                <%= for target <- action.targets do %>
-                                  <option value={target.id}>{target.name}</option>
-                                <% end %>
-                              </select>
-                            </label>
-                            <button type="submit" class="court-button small">Play</button>
-                          </form>
-                        <% else %>
-                          <button
-                            type="button"
-                            class={["court-button", "small", action_class(action.id)]}
-                            phx-click="take_action"
-                            phx-value-action={action.id}
-                            phx-value-target=""
-                          >
-                            <span>{action.label}</span>
-                            <span class="action-tag">{action_tag(action.id)}</span>
+                      <%= if @selected_action_map do %>
+                        <div class="dock-targeting-state">
+                          <p class="dock-targeting-prompt">
+                            Select target for <strong>{@selected_action_map.label}</strong>
+                          </p>
+                          <button type="button" class="court-button small" phx-click="cancel_action">
+                            Cancel
                           </button>
-                        <% end %>
+                        </div>
+                      <% else %>
+                        <div :if={@all_actions != []} class="dock-actions-grid">
+                          <%= for action <- @all_actions do %>
+                            <button
+                              type="button"
+                              class={[
+                                "court-button",
+                                "small",
+                                "action-button",
+                                action_class(action.id)
+                              ]}
+                              phx-click={if action.target, do: "select_action", else: "take_action"}
+                              phx-value-action={action.id}
+                              phx-value-target=""
+                              disabled={action.disabled}
+                            >
+                              <span>{action.label}</span>
+                              <span class="action-tag">{action_tag(action.id)}</span>
+                            </button>
+                          <% end %>
+                        </div>
                       <% end %>
                     </div>
 
@@ -388,13 +428,7 @@ defmodule CoupexWeb.RoomLive do
                   <div class="turn-banner">
                     <span>Turn {@snapshot.game.turn_number}</span>
                     <strong>{@snapshot.game.active_player_name}</strong>
-                    <span>
-                      <%= if @snapshot.game.status == :finished do %>
-                        court concluded
-                      <% else %>
-                        in the spotlight
-                      <% end %>
-                    </span>
+                    <span>{turn_banner_label(@snapshot.game)}</span>
                   </div>
                 </section>
               </section>
@@ -509,6 +543,22 @@ defmodule CoupexWeb.RoomLive do
   defp role_index("Ambassador"), do: "IV"
   defp role_index("Contessa"), do: "V"
   defp role_index(_role), do: "?"
+
+  defp dock_status_label(game) do
+    cond do
+      game.status == :finished -> "Court Concluded"
+      game.interaction.kind == :action and game.interaction.your_turn -> "Your Move"
+      true -> "Watching"
+    end
+  end
+
+  defp turn_banner_label(game) do
+    cond do
+      game.status == :finished -> "Court Concluded"
+      game.interaction.kind == :action and game.interaction.your_turn -> "To Act"
+      true -> "Is Acting"
+    end
+  end
 
   defp action_class("income"), do: "action-income"
   defp action_class("foreign_aid"), do: "action-foreign-aid"

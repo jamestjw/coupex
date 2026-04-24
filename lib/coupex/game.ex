@@ -691,12 +691,13 @@ defmodule Coupex.Game do
       forced_coup = player.coins >= 10
 
       action_specs()
-      |> Enum.filter(fn spec ->
-        enough_coins = player.coins >= spec.cost
-        (not forced_coup or spec.id == "coup") and enough_coins
-      end)
       |> Enum.map(fn spec ->
-        Map.put(spec, :targets, if(spec.target, do: available_targets(game, viewer_id), else: []))
+        enough_coins = player.coins >= spec.cost
+        disabled = not ((not forced_coup or spec.id == "coup") and enough_coins)
+
+        spec
+        |> Map.put(:disabled, disabled)
+        |> Map.put(:targets, if(spec.target, do: available_targets(game, viewer_id), else: []))
       end)
     end
   end
