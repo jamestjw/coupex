@@ -390,7 +390,13 @@ defmodule CoupexWeb.RoomLive do
                     </div>
 
                     <div :if={@snapshot.game.interaction.kind == :reveal} class="response-card">
-                      <p>{@snapshot.game.interaction.reason}</p>
+                      <p>
+                        <%= if @snapshot.game.interaction.your_turn do %>
+                          {@snapshot.game.interaction.reason}
+                        <% else %>
+                          Waiting for {@snapshot.game.interaction.player_name} to reveal one influence.
+                        <% end %>
+                      </p>
                     </div>
 
                     <div

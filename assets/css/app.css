@@ -835,6 +835,37 @@ body::before {
   background: rgba(184, 50, 50, 0.1);
 }
 
+.influence-card.revealed,
+.hand-card.revealed {
+  position: relative;
+  overflow: hidden;
+}
+
+.influence-card.revealed::before,
+.influence-card.revealed::after,
+.hand-card.revealed::before,
+.hand-card.revealed::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 142%;
+  height: 2px;
+  background: rgba(184, 50, 50, 0.9);
+  box-shadow: 0 0 0 1px rgba(138, 35, 35, 0.18);
+  pointer-events: none;
+}
+
+.influence-card.revealed::before,
+.hand-card.revealed::before {
+  transform: translate(-50%, -50%) rotate(33deg);
+}
+
+.influence-card.revealed::after,
+.hand-card.revealed::after {
+  transform: translate(-50%, -50%) rotate(-33deg);
+}
+
 .action-dock {
   display: grid;
   grid-template-columns: 18rem minmax(0, 1fr) 9rem;

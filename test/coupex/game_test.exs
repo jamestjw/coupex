@@ -118,6 +118,28 @@ defmodule Coupex.GameTest do
     assert Enum.find(updated.players, &(&1.id == "p1")).coins == 4
   end
 
+  test "reveal interaction includes whose reveal is pending" do
+    game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_reveal,
+        player_id: "p1",
+        reason: "Your bluff was caught. Reveal one influence.",
+        continuation: %{type: :advance_turn}
+      })
+
+    reveal_for_p1 = Game.view(game, "p1").interaction
+    reveal_for_p2 = Game.view(game, "p2").interaction
+
+    assert reveal_for_p1.kind == :reveal
+    assert reveal_for_p1.your_turn
+    assert reveal_for_p1.player_name == "Isolde"
+
+    assert reveal_for_p2.kind == :reveal
+    refute reveal_for_p2.your_turn
+    assert reveal_for_p2.player_name == "Isolde"
+  end
+
   defp base_game(player_one_overrides, player_two_overrides) do
     %{
       status: :active,

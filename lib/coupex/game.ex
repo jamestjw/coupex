@@ -458,7 +458,12 @@ defmodule Coupex.Game do
         }
 
       %{kind: :awaiting_reveal, player_id: player_id, reason: reason} ->
-        %{kind: :reveal, reason: reason, your_turn: viewer_id == player_id}
+        %{
+          kind: :reveal,
+          reason: reason,
+          your_turn: viewer_id == player_id,
+          player_name: player_name(game, player_id)
+        }
 
       %{kind: :awaiting_exchange, player_id: player_id, options: options, keep_count: keep_count} ->
         %{
