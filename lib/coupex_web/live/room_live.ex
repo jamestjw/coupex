@@ -985,8 +985,14 @@ defmodule CoupexWeb.RoomLive do
         <span :if={@row.actor} class="actor">{@row.actor}</span>
         <span :if={@row.verb} class="verb">{@row.verb}</span>
         <span :if={@row.role} class={["role-tag", role_tag_class(@row.role)]}>{@row.role}</span>
-        <span :if={@row.detail} class="detail">- {@row.detail}</span>
-        <span :if={@row.target} class="target">-> <span class="actor">{@row.target}</span></span>
+        <span :if={@row.detail} class="detail">{detail_text(@row.verb, @row.detail)}</span>
+        <span :if={@row.target} class="target">
+          <%= if @row.kind == :challenge do %>
+            <span class="detail">claim by</span> <span class="actor">{@row.target}</span>
+          <% else %>
+            -> <span class="actor">{@row.target}</span>
+          <% end %>
+        </span>
         <span :if={coin_delta(@row)} class="coin-delta">{coin_delta(@row)}</span>
         <span :if={@row.outcome} class="outcome">{@row.outcome}</span>
       </div>
@@ -1017,14 +1023,16 @@ defmodule CoupexWeb.RoomLive do
           cond do
             is_binary(entry[:verb]) -> entry.verb
             entry[:role] -> "claimed"
-            true -> "took"
+            entry[:detail] == "Income" -> "took"
+            entry[:detail] == "Coup" -> "launched"
+            true -> "played"
           end
 
         %{base | verb: verb, detail: entry[:detail]}
 
       :challenge ->
         outcome = if entry[:truthful], do: "challenge failed", else: "bluff exposed"
-        %{base | verb: "challenged", detail: "on", outcome: outcome}
+        %{base | verb: "challenged", detail: nil, outcome: outcome}
 
       :block ->
         if entry[:role] do
@@ -1058,6 +1066,9 @@ defmodule CoupexWeb.RoomLive do
   defp coin_delta(%{gained: gained}) when is_integer(gained), do: "(+#{gained})"
   defp coin_delta(%{spent: spent}) when is_integer(spent), do: "(-#{spent})"
   defp coin_delta(_row), do: nil
+
+  defp detail_text(verb, detail) when verb in ["took", "launched", "played"], do: detail
+  defp detail_text(_verb, detail), do: "— #{detail}"
 
   defp avatar_initial(name) when is_binary(name) do
     case String.first(name) do
