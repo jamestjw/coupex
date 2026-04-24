@@ -1104,10 +1104,10 @@ body::before {
 .court-button.small.drama-button {
   min-height: 2.65rem;
   min-width: 6.9rem;
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-family: "JetBrains Mono", monospace;
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  font-family: "Newsreader", Georgia, serif;
   justify-content: center;
 }
 
@@ -1128,6 +1128,36 @@ body::before {
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-soft);
+}
+
+.drama-timer {
+  margin-top: 0.95rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.drama-timer-bar {
+  width: 7.5rem;
+  height: 2px;
+  background: var(--paper-3);
+  overflow: hidden;
+  position: relative;
+}
+
+.drama-timer-bar > span {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform-origin: left;
+  transform: scaleX(var(--claim-timer-scale, 1));
+  transition: transform 1s linear;
 }
 
 .response-card,

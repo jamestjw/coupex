@@ -51,7 +51,7 @@ defmodule CoupexWeb.RoomLive do
 
   def handle_event("pass", _, socket) do
     response_key =
-      if socket.assigns.snapshot.game.interaction.kind == :respond_action,
+      if socket.assigns.snapshot.game.interaction.kind in [:respond_action, :respond_block],
         do: claim_key(socket.assigns.snapshot.game),
         else: nil
 
@@ -351,6 +351,19 @@ defmodule CoupexWeb.RoomLive do
                       <p>You allowed this claim. Waiting for the rest of the table.</p>
                     </div>
 
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :respond_block and
+                          @snapshot.game.interaction.block.player_id != @viewer_id and
+                          @claim_response_key == claim_key(@snapshot.game) and
+                          @snapshot.game.interaction.awaiting_others
+                      }
+                      id="block-response-waiting"
+                      class="response-card claim-response-waiting"
+                    >
+                      <p>You allowed this block. Waiting for the rest of the table.</p>
+                    </div>
+
                     <div :if={@snapshot.game.interaction.kind == :block} class="response-card">
                       <p>Block {@snapshot.game.interaction.pending.action_label}?</p>
                       <div class="response-actions">
@@ -372,30 +385,6 @@ defmodule CoupexWeb.RoomLive do
                           phx-click="pass"
                         >
                           Pass
-                        </button>
-                      </div>
-                    </div>
-
-                    <div :if={@snapshot.game.interaction.kind == :respond_block} class="response-card">
-                      <p>
-                        {@snapshot.game.interaction.block.player_name} blocks as {@snapshot.game.interaction.block.role}
-                      </p>
-                      <div class="response-actions">
-                        <button
-                          :if={@snapshot.game.interaction.can_challenge}
-                          type="button"
-                          class="court-button small"
-                          phx-click="challenge"
-                        >
-                          Challenge Block
-                        </button>
-                        <button
-                          :if={@snapshot.game.interaction.can_pass}
-                          type="button"
-                          class="court-button small"
-                          phx-click="pass"
-                        >
-                          Let It Stand
                         </button>
                       </div>
                     </div>
@@ -474,6 +463,10 @@ defmodule CoupexWeb.RoomLive do
               }
               id="claim-challenge-modal"
               class="drama-overlay"
+              phx-hook="ClaimChallengeCountdown"
+              data-auto-pass={to_string(@snapshot.game.interaction.can_pass)}
+              data-seconds="8"
+              data-claim-key={claim_key(@snapshot.game)}
             >
               <div class="drama-sheet">
                 <p class="drama-eyebrow">An action is being taken</p>
@@ -520,6 +513,99 @@ defmodule CoupexWeb.RoomLive do
                   >
                     Allow
                   </button>
+                </div>
+
+                <div
+                  :if={@snapshot.game.interaction.can_pass}
+                  id="claim-challenge-timer"
+                  class="drama-timer"
+                >
+                  <span>Auto-allow in</span>
+                  <div class="drama-timer-bar">
+                    <span data-claim-timer-bar></span>
+                  </div>
+                  <span data-claim-countdown>8s</span>
+                </div>
+
+                <p
+                  :if={
+                    not @snapshot.game.interaction.can_challenge and
+                      not @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-waiting"
+                >
+                  Waiting for eligible players to respond.
+                </p>
+              </div>
+            </div>
+
+            <div
+              :if={
+                @snapshot.game.interaction.kind == :respond_block and
+                  @snapshot.game.interaction.block.player_id != @viewer_id and
+                  @claim_response_key != claim_key(@snapshot.game)
+              }
+              id="block-challenge-modal"
+              class="drama-overlay"
+              phx-hook="ClaimChallengeCountdown"
+              data-auto-pass={to_string(@snapshot.game.interaction.can_pass)}
+              data-seconds="8"
+              data-claim-key={claim_key(@snapshot.game)}
+            >
+              <div class="drama-sheet">
+                <p class="drama-eyebrow">A block is being claimed</p>
+                <h2 class="drama-title">
+                  <span>{@snapshot.game.interaction.block.player_name}</span>
+                  blocks as
+                  <span class={[
+                    "drama-claim-pill",
+                    role_class(@snapshot.game.interaction.block.role)
+                  ]}>
+                    {@snapshot.game.interaction.block.role}
+                  </span>
+                </h2>
+
+                <p class="drama-body">
+                  against <em>{@snapshot.game.interaction.pending.action_label}</em>.
+                  Do you challenge this claim?
+                </p>
+
+                <div
+                  :if={
+                    @snapshot.game.interaction.can_challenge or @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-actions"
+                >
+                  <button
+                    :if={@snapshot.game.interaction.can_challenge}
+                    id="block-challenge-button"
+                    type="button"
+                    class="court-button small drama-button primary"
+                    phx-click="challenge"
+                  >
+                    Challenge Block
+                  </button>
+                  <button
+                    :if={@snapshot.game.interaction.can_pass}
+                    id="block-allow-button"
+                    type="button"
+                    class="court-button small drama-button"
+                    phx-click="pass"
+                  >
+                    Let It Stand
+                  </button>
+                </div>
+
+                <div
+                  :if={@snapshot.game.interaction.can_pass}
+                  id="block-challenge-timer"
+                  class="drama-timer"
+                >
+                  <span>Auto-allow in</span>
+                  <div class="drama-timer-bar">
+                    <span data-claim-timer-bar></span>
+                  </div>
+                  <span data-claim-countdown>8s</span>
                 </div>
 
                 <p
@@ -614,6 +700,21 @@ defmodule CoupexWeb.RoomLive do
       pending.actor_id,
       pending.action,
       pending.target_id || "none"
+    ]
+    |> Enum.join(":")
+  end
+
+  defp claim_key(%{
+         interaction: %{kind: :respond_block, pending: pending, block: block},
+         turn_number: turn_number
+       }) do
+    [
+      Integer.to_string(turn_number),
+      pending.actor_id,
+      pending.action,
+      pending.target_id || "none",
+      block.player_id,
+      block.role
     ]
     |> Enum.join(":")
   end

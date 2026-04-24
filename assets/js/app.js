@@ -25,11 +25,80 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/coupex"
 import topbar from "../vendor/topbar"
 
+const ClaimChallengeCountdown = {
+  mounted() {
+    this.startCountdown()
+  },
+
+  updated() {
+    if (this.claimKey !== this.el.dataset.claimKey) {
+      this.startCountdown()
+      return
+    }
+
+    if (this.el.dataset.autoPass !== "true") {
+      this.clearCountdown()
+    }
+  },
+
+  destroyed() {
+    this.clearCountdown()
+  },
+
+  startCountdown() {
+    this.clearCountdown()
+    this.claimKey = this.el.dataset.claimKey
+    this.fired = false
+    this.totalSeconds = Math.max(parseInt(this.el.dataset.seconds || "8", 10), 1)
+    this.secondsLeft = this.totalSeconds
+    this.renderCountdown()
+
+    if (this.el.dataset.autoPass !== "true") {
+      return
+    }
+
+    this.countdownTimer = window.setInterval(() => {
+      this.secondsLeft = Math.max(this.secondsLeft - 1, 0)
+      this.renderCountdown()
+
+      if (this.secondsLeft === 0 && !this.fired) {
+        this.fired = true
+        this.clearCountdown()
+        this.pushEvent("pass", {})
+      }
+    }, 1000)
+  },
+
+  clearCountdown() {
+    if (this.countdownTimer) {
+      window.clearInterval(this.countdownTimer)
+      this.countdownTimer = null
+    }
+  },
+
+  renderCountdown() {
+    const countdownNode = this.el.querySelector("[data-claim-countdown]")
+    const barNode = this.el.querySelector("[data-claim-timer-bar]")
+
+    if (countdownNode) {
+      countdownNode.textContent = `${this.secondsLeft}s`
+    }
+
+    if (barNode) {
+      const progress = this.secondsLeft / this.totalSeconds
+      barNode.style.setProperty("--claim-timer-scale", progress.toString())
+    }
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {
+    ...colocatedHooks,
+    ClaimChallengeCountdown,
+  },
 })
 
 // Show progress bar on live navigation and form submits
@@ -80,4 +149,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-
