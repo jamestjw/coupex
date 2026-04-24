@@ -62,6 +62,62 @@ defmodule Coupex.GameTest do
     assert updated.phase.player_id == "p1"
   end
 
+  test "allowing a tax claim advances to next turn" do
+    game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_action_responses,
+        pending: %{
+          actor_id: "p1",
+          actor_name: "Isolde",
+          action: "tax",
+          action_label: "Tax",
+          claim_role: :duke,
+          target_id: nil,
+          target_name: nil,
+          block_roles: [],
+          block_candidates: [],
+          cost: 0
+        },
+        eligible_ids: ["p2"],
+        passed_ids: MapSet.new()
+      })
+
+    assert {:ok, updated} = Game.pass(game, "p2")
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p2"
+    assert updated.turn_number == 2
+    assert Enum.find(updated.players, &(&1.id == "p1")).coins == 5
+  end
+
+  test "all blocks passed resolves foreign aid and advances turn" do
+    game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_block,
+        pending: %{
+          actor_id: "p1",
+          actor_name: "Isolde",
+          action: "foreign_aid",
+          action_label: "Foreign Aid",
+          claim_role: nil,
+          target_id: nil,
+          target_name: nil,
+          block_roles: [:duke],
+          block_candidates: ["p2"],
+          cost: 0
+        },
+        eligible_ids: ["p2"],
+        passed_ids: MapSet.new()
+      })
+
+    assert {:ok, updated} = Game.pass(game, "p2")
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p2"
+    assert updated.turn_number == 2
+    assert Enum.find(updated.players, &(&1.id == "p1")).coins == 4
+  end
+
   defp base_game(player_one_overrides, player_two_overrides) do
     %{
       status: :active,

@@ -1002,6 +1002,134 @@ body::before {
   100% { box-shadow: 0 0 0 12px rgba(184, 50, 50, 0), 0 22px 32px -18px rgba(26, 23, 20, 0.46); }
 }
 
+.drama-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(26, 23, 20, 0.68);
+  backdrop-filter: blur(6px);
+  animation: drama-fade-in 0.22s ease-out;
+}
+
+@keyframes drama-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.drama-sheet {
+  width: min(100%, 40rem);
+  border: 1px solid rgba(26, 23, 20, 0.82);
+  background: rgba(244, 237, 224, 0.98);
+  padding: 2.2rem 2.4rem;
+  text-align: center;
+  box-shadow: 0 34px 64px -26px rgba(26, 23, 20, 0.75);
+  animation: drama-sheet-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes drama-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.65rem) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.drama-eyebrow {
+  margin: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.61rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.drama-title {
+  margin: 0.7rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.04;
+}
+
+.drama-claim-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(26, 23, 20, 0.72);
+  background: rgba(255, 250, 241, 0.92);
+  min-height: 2.25rem;
+  padding: 0.25rem 0.8rem;
+  font-size: clamp(1.2rem, 3.4vw, 1.75rem);
+  letter-spacing: 0.02em;
+}
+
+.drama-claim-pill.role-duke { color: var(--duke); }
+.drama-claim-pill.role-assassin { color: var(--assassin); }
+.drama-claim-pill.role-captain { color: var(--captain); }
+.drama-claim-pill.role-ambassador { color: var(--ambassador); }
+.drama-claim-pill.role-contessa { color: var(--contessa); }
+
+.drama-body {
+  margin: 1.05rem auto 0;
+  max-width: 33rem;
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1.55;
+}
+
+.drama-body em,
+.drama-body strong {
+  color: var(--ink);
+}
+
+.drama-actions {
+  margin-top: 1.45rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.court-button.small.drama-button {
+  min-height: 2.65rem;
+  min-width: 6.9rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-family: "JetBrains Mono", monospace;
+  justify-content: center;
+}
+
+.court-button.small.drama-button.primary {
+  border-color: var(--duke);
+  background: var(--duke);
+  color: var(--paper);
+}
+
+.court-button.small.drama-button.primary:hover {
+  background: #922727;
+}
+
+.drama-waiting {
+  margin: 1.4rem 0 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
 .response-card,
 .exchange-card {
   width: min(100%, 42rem);
@@ -1009,6 +1137,18 @@ body::before {
   border: 1px solid var(--rule);
   background: rgba(255, 250, 241, 0.75);
   text-align: center;
+}
+
+.claim-response-waiting {
+  background: rgba(255, 250, 241, 0.9);
+}
+
+.claim-response-waiting p {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 
 .response-card p,
@@ -1292,6 +1432,18 @@ body::before {
   .table-stage {
     min-height: 29rem;
     padding: 1rem 0.75rem 1.25rem;
+  }
+
+  .drama-overlay {
+    padding: 0.75rem;
+  }
+
+  .drama-sheet {
+    padding: 1.55rem 1.25rem;
+  }
+
+  .drama-body {
+    font-size: 1rem;
   }
 
   .table-felt {

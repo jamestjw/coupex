@@ -18,6 +18,7 @@ defmodule CoupexWeb.RoomLive do
          |> assign(:viewer_id, viewer_id)
          |> assign(:snapshot, snapshot)
          |> assign(:lobby_error, nil)
+         |> assign(:claim_response_key, nil)
          |> assign(:exchange_selection, [])
          |> assign(:selected_action, nil)
          |> assign(:current_scope, nil)}
@@ -34,7 +35,7 @@ defmodule CoupexWeb.RoomLive do
   def handle_info({:room_updated, code}, socket) do
     case RoomServer.snapshot(code, socket.assigns.viewer_id) do
       {:ok, snapshot} ->
-        {:noreply, socket |> assign(:snapshot, snapshot) |> assign(:lobby_error, nil)}
+        {:noreply, apply_snapshot(socket, snapshot)}
 
       {:error, message} ->
         {:noreply, socket |> put_flash(:error, message) |> push_navigate(to: ~p"/")}
@@ -48,8 +49,22 @@ defmodule CoupexWeb.RoomLive do
   def handle_event("start_game", _, socket),
     do: room_action(socket, fn s -> RoomServer.start_game(s.code, s.viewer_id) end)
 
-  def handle_event("pass", _, socket),
-    do: room_action(socket, fn s -> RoomServer.pass(s.code, s.viewer_id) end)
+  def handle_event("pass", _, socket) do
+    response_key =
+      if socket.assigns.snapshot.game.interaction.kind == :respond_action,
+        do: claim_key(socket.assigns.snapshot.game),
+        else: nil
+
+    room_action(
+      socket,
+      fn s -> RoomServer.pass(s.code, s.viewer_id) end,
+      fn updated_socket ->
+        if response_key,
+          do: assign(updated_socket, :claim_response_key, response_key),
+          else: updated_socket
+      end
+    )
+  end
 
   def handle_event("challenge", _, socket),
     do: room_action(socket, fn s -> RoomServer.challenge(s.code, s.viewer_id) end)
@@ -297,7 +312,10 @@ defmodule CoupexWeb.RoomLive do
                           </button>
                         </div>
                       <% else %>
-                        <div :if={@all_actions != []} class="dock-actions-grid dock-actions-grid-2-row">
+                        <div
+                          :if={@all_actions != []}
+                          class="dock-actions-grid dock-actions-grid-2-row"
+                        >
                           <%= for action <- @all_actions do %>
                             <button
                               type="button"
@@ -321,30 +339,16 @@ defmodule CoupexWeb.RoomLive do
                     </div>
 
                     <div
-                      :if={@snapshot.game.interaction.kind == :respond_action}
-                      class="response-card"
+                      :if={
+                        @snapshot.game.interaction.kind == :respond_action and
+                          @snapshot.game.interaction.pending.actor_id != @viewer_id and
+                          @claim_response_key == claim_key(@snapshot.game) and
+                          @snapshot.game.interaction.awaiting_others
+                      }
+                      id="claim-response-waiting"
+                      class="response-card claim-response-waiting"
                     >
-                      <p>
-                        {@snapshot.game.interaction.pending.actor_name} claims {@snapshot.game.interaction.pending.claim_role}
-                      </p>
-                      <div class="response-actions">
-                        <button
-                          :if={@snapshot.game.interaction.can_challenge}
-                          type="button"
-                          class="court-button small"
-                          phx-click="challenge"
-                        >
-                          Challenge
-                        </button>
-                        <button
-                          :if={@snapshot.game.interaction.can_pass}
-                          type="button"
-                          class="court-button small"
-                          phx-click="pass"
-                        >
-                          Allow
-                        </button>
-                      </div>
+                      <p>You allowed this claim. Waiting for the rest of the table.</p>
                     </div>
 
                     <div :if={@snapshot.game.interaction.kind == :block} class="response-card">
@@ -461,6 +465,74 @@ defmodule CoupexWeb.RoomLive do
                 </div>
               </aside>
             </div>
+
+            <div
+              :if={
+                @snapshot.game.interaction.kind == :respond_action and
+                  @snapshot.game.interaction.pending.actor_id != @viewer_id and
+                  @claim_response_key != claim_key(@snapshot.game)
+              }
+              id="claim-challenge-modal"
+              class="drama-overlay"
+            >
+              <div class="drama-sheet">
+                <p class="drama-eyebrow">An action is being taken</p>
+                <h2 class="drama-title">
+                  <span>{@snapshot.game.interaction.pending.actor_name}</span>
+                  claims
+                  <span class={[
+                    "drama-claim-pill",
+                    role_class(@snapshot.game.interaction.pending.claim_role)
+                  ]}>
+                    {@snapshot.game.interaction.pending.claim_role}
+                  </span>
+                </h2>
+
+                <p class="drama-body">
+                  to <em>{@snapshot.game.interaction.pending.action_label}</em>
+                  <%= if @snapshot.game.interaction.pending.target_name do %>
+                    against <strong>{@snapshot.game.interaction.pending.target_name}</strong>
+                  <% end %>.
+                  Do you challenge this claim?
+                </p>
+
+                <div
+                  :if={
+                    @snapshot.game.interaction.can_challenge or @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-actions"
+                >
+                  <button
+                    :if={@snapshot.game.interaction.can_challenge}
+                    id="claim-challenge-button"
+                    type="button"
+                    class="court-button small drama-button primary"
+                    phx-click="challenge"
+                  >
+                    Challenge
+                  </button>
+                  <button
+                    :if={@snapshot.game.interaction.can_pass}
+                    id="claim-allow-button"
+                    type="button"
+                    class="court-button small drama-button"
+                    phx-click="pass"
+                  >
+                    Allow
+                  </button>
+                </div>
+
+                <p
+                  :if={
+                    not @snapshot.game.interaction.can_challenge and
+                      not @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-waiting"
+                >
+                  Waiting for eligible players to respond.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       <% else %>
@@ -515,8 +587,7 @@ defmodule CoupexWeb.RoomLive do
       {:ok, snapshot} ->
         {:noreply,
          socket
-         |> assign(:snapshot, snapshot)
-         |> assign(:lobby_error, nil)
+         |> apply_snapshot(snapshot)
          |> after_success.()}
 
       {:error, message} ->
@@ -531,6 +602,37 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp claim_key(nil), do: nil
+
+  defp claim_key(%{
+         interaction: %{kind: :respond_action, pending: pending},
+         turn_number: turn_number
+       }) do
+    [
+      Integer.to_string(turn_number),
+      pending.actor_id,
+      pending.action,
+      pending.target_id || "none"
+    ]
+    |> Enum.join(":")
+  end
+
+  defp claim_key(_game), do: nil
+
+  defp apply_snapshot(socket, snapshot) do
+    current_claim_key = claim_key(snapshot.game)
+
+    claim_response_key =
+      if socket.assigns.claim_response_key == current_claim_key,
+        do: socket.assigns.claim_response_key,
+        else: nil
+
+    socket
+    |> assign(:snapshot, snapshot)
+    |> assign(:lobby_error, nil)
+    |> assign(:claim_response_key, claim_response_key)
+  end
 
   defp seat_grid_class(count), do: "seat-grid seat-grid-#{count}"
 

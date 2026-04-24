@@ -187,7 +187,7 @@ defmodule Coupex.Game do
           next_passed = MapSet.put(passed_ids, player_id)
 
           if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
-            {:ok, after_resolution(resolve_action(game, pending))}
+            {:ok, resolve_and_advance(game, pending)}
           else
             {:ok, %{game | phase: %{game.phase | passed_ids: next_passed}}}
           end
@@ -392,11 +392,21 @@ defmodule Coupex.Game do
         eligible_ids: eligible_ids,
         passed_ids: passed_ids
       } ->
+        can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
+
+        awaiting_others =
+          viewer_id in eligible_ids and
+            MapSet.member?(passed_ids, viewer_id) and
+            Enum.any?(eligible_ids, fn player_id ->
+              player_id != viewer_id and not MapSet.member?(passed_ids, player_id)
+            end)
+
         %{
           kind: :respond_action,
           pending: public_pending(pending),
-          can_challenge: viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id),
-          can_pass: viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
+          can_challenge: can_respond,
+          can_pass: can_respond,
+          awaiting_others: awaiting_others
         }
 
       %{
@@ -455,7 +465,7 @@ defmodule Coupex.Game do
 
   defp after_action_responses(game, pending) do
     if pending.block_roles == [] do
-      {:ok, after_resolution(resolve_action(game, pending))}
+      {:ok, resolve_and_advance(game, pending)}
     else
       {:ok,
        put_phase(game, %{
@@ -577,6 +587,13 @@ defmodule Coupex.Game do
     game
     |> update_player(actor_id, fn player -> %{player | coins: player.coins + amount} end)
     |> update_player(target_id, fn player -> %{player | coins: player.coins - amount} end)
+  end
+
+  defp resolve_and_advance(game, pending) do
+    game
+    |> Map.put(:phase, %{kind: :awaiting_action})
+    |> resolve_action(pending)
+    |> after_resolution()
   end
 
   defp advance_or_finish(game) do
