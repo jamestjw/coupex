@@ -140,6 +140,49 @@ defmodule Coupex.GameTest do
     assert reveal_for_p2.player_name == "Isolde"
   end
 
+  test "coup auto-reveals when target has one influence left" do
+    game =
+      base_game(
+        %{coins: 7},
+        %{influences: [%{role: :assassin, revealed: true}, %{role: :contessa, revealed: false}]}
+      )
+
+    assert {:ok, updated} = Game.declare_action(game, "p1", "coup", "p2")
+    assert updated.phase.kind == :game_over
+    assert updated.status == :finished
+    assert updated.winner_id == "p1"
+  end
+
+  test "successful challenge auto-reveals when bluffer has one influence left" do
+    game =
+      base_game(
+        %{influences: [%{role: :captain, revealed: true}, %{role: :assassin, revealed: false}]},
+        %{}
+      )
+      |> Map.put(:phase, %{
+        kind: :awaiting_action_responses,
+        pending: %{
+          actor_id: "p1",
+          actor_name: "Isolde",
+          action: "tax",
+          action_label: "Tax",
+          claim_role: :duke,
+          target_id: nil,
+          target_name: nil,
+          block_roles: [],
+          block_candidates: [],
+          cost: 0
+        },
+        eligible_ids: ["p2"],
+        passed_ids: MapSet.new()
+      })
+
+    assert {:ok, updated} = Game.challenge(game, "p2")
+    assert updated.phase.kind == :game_over
+    assert updated.status == :finished
+    assert updated.winner_id == "p2"
+  end
+
   defp base_game(player_one_overrides, player_two_overrides) do
     %{
       status: :active,

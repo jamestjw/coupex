@@ -128,12 +128,12 @@ defmodule Coupex.Game do
 
         spec.id == "coup" ->
           {:ok,
-           put_phase(game, %{
-             kind: :awaiting_reveal,
-             player_id: target_id,
-             reason: "Choose an influence to lose to the coup.",
-             continuation: %{type: :advance_turn}
-           })}
+           begin_reveal_phase(
+             game,
+             target_id,
+             "Choose an influence to lose to the coup.",
+             %{type: :advance_turn}
+           )}
 
         spec.claim != nil ->
           {:ok,
@@ -510,20 +510,20 @@ defmodule Coupex.Game do
       game = replace_proven_role(game, claimed_by_id, role)
 
       {:ok,
-       put_phase(game, %{
-         kind: :awaiting_reveal,
-         player_id: challenger_id,
-         reason: "Your challenge failed. Reveal one influence.",
-         continuation: continuations.success
-       })}
+       begin_reveal_phase(
+         game,
+         challenger_id,
+         "Your challenge failed. Reveal one influence.",
+         continuations.success
+       )}
     else
       {:ok,
-       put_phase(game, %{
-         kind: :awaiting_reveal,
-         player_id: claimed_by_id,
-         reason: "Your bluff was caught. Reveal one influence.",
-         continuation: continuations.failure
-       })}
+       begin_reveal_phase(
+         game,
+         claimed_by_id,
+         "Your bluff was caught. Reveal one influence.",
+         continuations.failure
+       )}
     end
   end
 
@@ -562,12 +562,12 @@ defmodule Coupex.Game do
         resolve_steal(game, pending.actor_id, pending.target_id)
 
       "assassinate" ->
-        put_phase(game, %{
-          kind: :awaiting_reveal,
-          player_id: pending.target_id,
-          reason: "Choose an influence to lose to the assassination.",
-          continuation: %{type: :advance_turn}
-        })
+        begin_reveal_phase(
+          game,
+          pending.target_id,
+          "Choose an influence to lose to the assassination.",
+          %{type: :advance_turn}
+        )
 
       "exchange" ->
         begin_exchange(game, pending.actor_id)
@@ -602,6 +602,47 @@ defmodule Coupex.Game do
     game
     |> update_player(actor_id, fn player -> %{player | coins: player.coins + amount} end)
     |> update_player(target_id, fn player -> %{player | coins: player.coins - amount} end)
+  end
+
+  defp begin_reveal_phase(game, player_id, reason, continuation) do
+    case single_unrevealed_influence_index(game, player_id) do
+      {:ok, index} ->
+        game = reveal_player_influence(game, player_id, index)
+        game = check_winner(game)
+
+        if game.status == :finished do
+          put_phase(game, %{kind: :game_over})
+        else
+          {:ok, next_game} = continue_after_reveal(game, continuation)
+          next_game
+        end
+
+      :multiple_or_none ->
+        put_phase(game, %{
+          kind: :awaiting_reveal,
+          player_id: player_id,
+          reason: reason,
+          continuation: continuation
+        })
+    end
+  end
+
+  # Returns {:ok, index} only when exactly one unrevealed influence remains.
+  # We return :multiple_or_none for all other cases to explicitly route to
+  # the regular reveal-choice flow without auto-selecting a card.
+  defp single_unrevealed_influence_index(game, player_id) do
+    indexes =
+      game
+      |> fetch_player!(player_id)
+      |> Map.fetch!(:influences)
+      |> Enum.with_index()
+      |> Enum.filter(fn {influence, _index} -> not influence.revealed end)
+      |> Enum.map(fn {_influence, index} -> index end)
+
+    case indexes do
+      [index] -> {:ok, index}
+      _ -> :multiple_or_none
+    end
   end
 
   defp resolve_and_advance(game, pending) do
