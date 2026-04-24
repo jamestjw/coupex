@@ -14,6 +14,16 @@ defmodule Coupex.RoomServer do
     "contessa" => :contessa
   }
 
+  def child_spec(code) do
+    normalized_code = normalize_code(code)
+
+    %{
+      id: {__MODULE__, normalized_code},
+      start: {__MODULE__, :start_link, [normalized_code]},
+      restart: :transient
+    }
+  end
+
   def start_link(code) do
     GenServer.start_link(__MODULE__, code, name: via(code))
   end
@@ -159,8 +169,12 @@ defmodule Coupex.RoomServer do
         nil -> state
       end
 
-    broadcast(next_state)
-    {:noreply, next_state}
+    if next_state.order == [] do
+      {:stop, :normal, next_state}
+    else
+      broadcast(next_state)
+      {:noreply, next_state}
+    end
   end
 
   defp reply_with_game(state, player_id, fun) do
