@@ -10,6 +10,15 @@ defmodule Coupex.GameTest do
              Game.declare_action(game, "p1", "income")
   end
 
+  test "income logs immediate coin gain" do
+    game = base_game(%{}, %{})
+
+    assert {:ok, updated} = Game.declare_action(game, "p1", "income")
+
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).gained == 1
+  end
+
   test "assassination waits for target reveal after responses finish" do
     game =
       base_game(%{coins: 4}, %{})
@@ -88,6 +97,9 @@ defmodule Coupex.GameTest do
     assert updated.active_player_id == "p2"
     assert updated.turn_number == 2
     assert Enum.find(updated.players, &(&1.id == "p1")).coins == 5
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).verb == "unopposed"
+    assert hd(updated.log).gained == 3
   end
 
   test "all blocks passed resolves foreign aid and advances turn" do
@@ -116,6 +128,40 @@ defmodule Coupex.GameTest do
     assert updated.active_player_id == "p2"
     assert updated.turn_number == 2
     assert Enum.find(updated.players, &(&1.id == "p1")).coins == 4
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).verb == "unopposed"
+    assert hd(updated.log).gained == 2
+  end
+
+  test "steal resolution logs gain and loss amounts" do
+    game = base_game(%{}, %{coins: 1})
+
+    assert {:ok, game} = Game.declare_action(game, "p1", "steal", "p2")
+    assert {:ok, game} = Game.pass(game, "p2")
+    assert {:ok, updated} = Game.pass(game, "p2")
+
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).verb == "unopposed"
+    assert hd(updated.log).gained == 1
+    assert hd(updated.log).lost == 1
+  end
+
+  test "assassinate logs spent coins on action declaration" do
+    game = base_game(%{coins: 3}, %{})
+
+    assert {:ok, updated} = Game.declare_action(game, "p1", "assassinate", "p2")
+
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).spent == 3
+  end
+
+  test "advancing to a new round adds a round break log entry" do
+    game = base_game(%{}, %{}) |> Map.put(:active_player_id, "p2")
+
+    assert {:ok, updated} = Game.declare_action(game, "p2", "income")
+    assert updated.round_number == 2
+    assert hd(updated.log).kind == :break
+    assert hd(updated.log).text == "Round 2"
   end
 
   test "reveal interaction includes whose reveal is pending" do

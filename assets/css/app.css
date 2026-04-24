@@ -124,7 +124,6 @@ body::before {
 .landing-note,
 .seat-meta,
 .chronicle-head span,
-.log-entry,
 .turn-banner span,
 .dock-summary p {
   font-family: "JetBrains Mono", monospace;
@@ -1450,25 +1449,26 @@ body::before {
 
 .chronicle-panel {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
   min-height: 0;
+  border-left: 1px solid var(--rule);
+  background: var(--paper);
 }
 
 .chronicle-head,
 .chronicle-list {
-  padding: 1rem;
+  padding: 0.9rem 1.1rem;
 }
 
-.chronicle-meta,
 .chronicle-foot {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.7rem 1rem;
+  padding: 0.62rem 1.1rem;
   border-bottom: 1px solid rgba(26, 23, 20, 0.18);
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.64rem;
-  letter-spacing: 0.18em;
+  font-size: 0.56rem;
+  letter-spacing: 0.19em;
   text-transform: uppercase;
   color: var(--ink-soft);
 }
@@ -1480,17 +1480,133 @@ body::before {
 
 .chronicle-list {
   overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  display: block;
+  padding: 0.45rem 0;
   min-height: 0;
 }
 
 .log-entry {
-  border-bottom: 1px solid rgba(26, 23, 20, 0.08);
-  padding-bottom: 0.75rem;
-  color: var(--ink-soft);
+  padding: 0.62rem 1.1rem;
+  border-bottom: 1px solid rgba(26, 23, 20, 0.06);
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 0.82rem;
+  color: var(--ink);
   line-height: 1.45;
+  animation: log-in 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.turn-no {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.53rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-right: 0.45rem;
+}
+
+.log-entry .actor {
+  font-weight: 600;
+}
+
+.log-entry .verb {
+  margin-left: 0.22rem;
+  font-style: italic;
+  color: #3a342c;
+}
+
+.log-entry .detail {
+  margin-left: 0.22rem;
+  color: #5a5147;
+}
+
+.log-entry .target {
+  margin-left: 0.26rem;
+}
+
+.log-entry .coin-delta {
+  margin-left: 0.32rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+.log-entry .outcome {
+  margin-left: 0.4rem;
+  padding: 0.04rem 0.32rem;
+  border: 1px solid rgba(26, 23, 20, 0.18);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.51rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.role-tag {
+  margin-left: 0.26rem;
+  padding: 0.08rem 0.36rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.51rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.role-tag.duke { background: var(--duke); }
+.role-tag.assassin { background: var(--assassin); }
+.role-tag.captain { background: var(--captain); }
+.role-tag.ambassador { background: var(--ambassador); }
+.role-tag.contessa { background: var(--contessa); }
+
+.log-entry.break {
+  padding: 0.56rem 1.1rem;
+  border-top: 1px solid rgba(26, 23, 20, 0.18);
+  border-bottom: 1px solid rgba(26, 23, 20, 0.18);
+  background: rgba(26, 23, 20, 0.06);
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.log-entry.challenge {
+  background: rgba(184, 50, 50, 0.06);
+}
+
+.log-entry.block {
+  background: rgba(30, 78, 122, 0.05);
+}
+
+.chronicle-list::-webkit-scrollbar {
+  width: 0.38rem;
+}
+
+.chronicle-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chronicle-list::-webkit-scrollbar-thumb {
+  background: rgba(26, 23, 20, 0.2);
+}
+
+.chronicle-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(26, 23, 20, 0.34);
+}
+
+@keyframes log-in {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+    background: rgba(255, 244, 214, 0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    background: transparent;
+  }
 }
 
 .court-button.small {

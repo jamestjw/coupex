@@ -91,6 +91,20 @@ const ClaimChallengeCountdown = {
   },
 }
 
+const LogAutoScroll = {
+  mounted() {
+    this.scrollToBottom()
+  },
+
+  updated() {
+    this.scrollToBottom()
+  },
+
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -98,6 +112,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     ...colocatedHooks,
     ClaimChallengeCountdown,
+    LogAutoScroll,
   },
 })
 

@@ -499,16 +499,9 @@ defmodule CoupexWeb.RoomLive do
                   </div>
                 </div>
 
-                <div class="chronicle-meta">
-                  <span>· {length(@snapshot.game.players)} players seated ·</span>
-                  <span>Round {@snapshot.game.round_number} ·</span>
-                </div>
-
-                <div class="chronicle-list" id="chronicle-list">
+                <div class="chronicle-list" id="chronicle-list" phx-hook="LogAutoScroll">
                   <%= for entry <- @snapshot.game.log do %>
-                    <div class={["log-entry", Atom.to_string(entry.kind)]}>
-                      {render_log(entry)}
-                    </div>
+                    <.chronicle_entry entry={entry} />
                   <% end %>
                 </div>
 
@@ -978,6 +971,94 @@ defmodule CoupexWeb.RoomLive do
   defp role_index("Contessa"), do: "V"
   defp role_index(_role), do: "?"
 
+  attr :entry, :map, required: true
+
+  defp chronicle_entry(assigns) do
+    assigns = assign(assigns, :row, chronicle_row(assigns.entry))
+
+    ~H"""
+    <%= if @row.kind == :break do %>
+      <div class="log-entry break">· {@row.text} ·</div>
+    <% else %>
+      <div class={["log-entry", Atom.to_string(@entry.kind)]}>
+        <span :if={@row.turn} class="turn-no">T{@row.turn}</span>
+        <span :if={@row.actor} class="actor">{@row.actor}</span>
+        <span :if={@row.verb} class="verb">{@row.verb}</span>
+        <span :if={@row.role} class={["role-tag", role_tag_class(@row.role)]}>{@row.role}</span>
+        <span :if={@row.detail} class="detail">- {@row.detail}</span>
+        <span :if={@row.target} class="target">-> <span class="actor">{@row.target}</span></span>
+        <span :if={coin_delta(@row)} class="coin-delta">{coin_delta(@row)}</span>
+        <span :if={@row.outcome} class="outcome">{@row.outcome}</span>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp chronicle_row(%{kind: :break, text: text}), do: %{kind: :break, text: text}
+
+  defp chronicle_row(entry) do
+    base = %{
+      kind: entry.kind,
+      turn: entry[:turn],
+      actor: entry[:actor],
+      verb: nil,
+      role: entry[:role],
+      detail: nil,
+      target: entry[:target],
+      outcome: nil,
+      gained: entry[:gained],
+      lost: entry[:lost],
+      spent: entry[:spent]
+    }
+
+    case entry.kind do
+      :action ->
+        verb =
+          cond do
+            is_binary(entry[:verb]) -> entry.verb
+            entry[:role] -> "claimed"
+            true -> "took"
+          end
+
+        %{base | verb: verb, detail: entry[:detail]}
+
+      :challenge ->
+        outcome = if entry[:truthful], do: "challenge failed", else: "bluff exposed"
+        %{base | verb: "challenged", detail: "on", outcome: outcome}
+
+      :block ->
+        if entry[:role] do
+          %{base | verb: "claimed", detail: entry[:detail]}
+        else
+          %{base | verb: entry[:detail]}
+        end
+
+      :reveal ->
+        %{base | verb: "revealed", detail: entry[:detail]}
+
+      :win ->
+        %{base | verb: entry[:detail]}
+
+      :exchange ->
+        %{base | verb: entry[:detail]}
+
+      _ ->
+        %{base | verb: entry[:detail] || "acted"}
+    end
+  end
+
+  defp role_tag_class(role) when is_binary(role),
+    do: role |> String.downcase() |> String.replace(" ", "-")
+
+  defp role_tag_class(_role), do: nil
+
+  defp coin_delta(%{gained: gained, lost: lost}) when is_integer(gained) and is_integer(lost),
+    do: "(+#{gained}/-#{lost})"
+
+  defp coin_delta(%{gained: gained}) when is_integer(gained), do: "(+#{gained})"
+  defp coin_delta(%{spent: spent}) when is_integer(spent), do: "(-#{spent})"
+  defp coin_delta(_row), do: nil
+
   defp avatar_initial(name) when is_binary(name) do
     case String.first(name) do
       nil -> "?"
@@ -1040,26 +1121,6 @@ defmodule CoupexWeb.RoomLive do
   defp action_tag("steal"), do: "+2"
   defp action_tag("exchange"), do: "<>"
   defp action_tag(_action), do: ""
-
-  defp render_log(entry) do
-    case entry.kind do
-      :break -> entry.text
-      :challenge -> "#{entry.actor} challenged #{entry.target} on #{entry.role}"
-      :block -> "#{entry.actor} #{entry.detail}"
-      :reveal -> "#{entry.actor} revealed #{entry.role} and #{entry.detail}"
-      :win -> "#{entry.actor} #{entry.detail}"
-      :exchange -> "#{entry.actor} #{entry.detail}"
-      _ -> render_action_log(entry)
-    end
-  end
-
-  defp render_action_log(entry) do
-    parts = [entry.actor]
-    parts = if entry[:role], do: parts ++ ["claimed #{entry.role}"], else: parts ++ ["played"]
-    parts = if entry[:detail], do: parts ++ [entry.detail], else: parts
-    parts = if entry[:target], do: parts ++ ["against #{entry.target}"], else: parts
-    Enum.join(parts, " ")
-  end
 
   defp viewer_ready?(snapshot) do
     snapshot.lobby_players

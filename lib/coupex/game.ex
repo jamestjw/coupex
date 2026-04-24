@@ -584,13 +584,18 @@ defmodule Coupex.Game do
   defp resolve_action(game, pending) do
     case pending.action do
       "foreign_aid" ->
-        resolve_income(game, pending.actor_id, 2)
+        game
+        |> resolve_income(pending.actor_id, 2)
+        |> log_action_resolution(pending, %{gained: 2})
 
       "tax" ->
-        resolve_income(game, pending.actor_id, 3)
+        game
+        |> resolve_income(pending.actor_id, 3)
+        |> log_action_resolution(pending, %{gained: 3})
 
       "steal" ->
-        resolve_steal(game, pending.actor_id, pending.target_id)
+        {game, amount} = resolve_steal(game, pending.actor_id, pending.target_id)
+        log_action_resolution(game, pending, %{gained: amount, lost: amount})
 
       "assassinate" ->
         begin_reveal_phase(
@@ -630,9 +635,12 @@ defmodule Coupex.Game do
     target = fetch_player!(game, target_id)
     amount = min(target.coins, 2)
 
-    game
-    |> update_player(actor_id, fn player -> %{player | coins: player.coins + amount} end)
-    |> update_player(target_id, fn player -> %{player | coins: player.coins - amount} end)
+    updated_game =
+      game
+      |> update_player(actor_id, fn player -> %{player | coins: player.coins + amount} end)
+      |> update_player(target_id, fn player -> %{player | coins: player.coins - amount} end)
+
+    {updated_game, amount}
   end
 
   defp begin_reveal_phase(game, player_id, reason, continuation) do
@@ -715,13 +723,20 @@ defmodule Coupex.Game do
         game.round_number
       end
 
-    %{
-      game
-      | active_player_id: next_player.id,
-        turn_number: game.turn_number + 1,
-        round_number: round_number,
-        phase: %{kind: :awaiting_action}
-    }
+    advanced =
+      %{
+        game
+        | active_player_id: next_player.id,
+          turn_number: game.turn_number + 1,
+          round_number: round_number,
+          phase: %{kind: :awaiting_action}
+      }
+
+    if round_number > game.round_number do
+      push_log(advanced, event(:break, %{text: "Round #{round_number}"}))
+    else
+      advanced
+    end
   end
 
   defp check_winner(game) do
@@ -841,9 +856,34 @@ defmodule Coupex.Game do
   end
 
   defp describe_action(pending) do
-    base = %{actor: pending.actor_name, detail: pending.action_label, target: pending.target_name}
-    if pending.claim_role, do: Map.put(base, :role, role_label(pending.claim_role)), else: base
+    base =
+      %{
+        actor: pending.actor_name,
+        detail: pending.action_label,
+        target: pending.target_name
+      }
+      |> maybe_put(:role, pending.claim_role && role_label(pending.claim_role))
+      |> maybe_put(:spent, if(pending.cost > 0, do: pending.cost, else: nil))
+      |> maybe_put(:gained, if(pending.action == "income", do: 1, else: nil))
+
+    base
   end
+
+  defp log_action_resolution(game, pending, attrs) do
+    resolution =
+      %{
+        actor: pending.actor_name,
+        role: pending.claim_role && role_label(pending.claim_role),
+        verb: "unopposed",
+        detail: "#{pending.action_label} stands"
+      }
+      |> Map.merge(attrs)
+
+    push_log(game, event(:action, resolution))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp build_deck, do: Enum.flat_map(@roles, &List.duplicate(&1, 3))
 
@@ -1000,7 +1040,10 @@ defmodule Coupex.Game do
   defp target_name(_game, nil), do: nil
   defp target_name(game, target_id), do: player_name(game, target_id)
 
-  defp push_log(game, entry), do: %{game | log: [entry | game.log]}
+  defp push_log(game, entry) do
+    %{game | log: [Map.put_new(entry, :turn, game.turn_number) | game.log]}
+  end
+
   defp event(kind, attrs), do: Map.put(attrs, :kind, kind)
 
   defp role_label(role) do
