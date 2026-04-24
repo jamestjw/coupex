@@ -300,4 +300,59 @@ defmodule CoupexWeb.RoomLiveTest do
 
     refute has_element?(host_view, "#action-block-modal")
   end
+
+  test "malformed reveal index does not crash the LiveView", %{conn: conn} do
+    {_code, host_view, _guest_view} = start_two_player_game(conn, "host-player", "guest-player")
+
+    render_hook(host_view, "reveal", %{"index" => "not-an-integer"})
+
+    assert has_element?(host_view, "#flash-group", "Choose one of your influences.")
+    assert has_element?(host_view, ".table-stage")
+  end
+
+  test "malformed exchange index does not crash the LiveView", %{conn: conn} do
+    {_code, host_view, _guest_view} = start_two_player_game(conn, "host-player", "guest-player")
+
+    render_hook(host_view, "toggle_exchange", %{"index" => "bad-index"})
+
+    assert has_element?(host_view, "#flash-group", "Choose a valid exchange card.")
+    assert has_element?(host_view, ".table-stage")
+  end
+
+  test "malformed block role is rejected without crashing the room", %{conn: conn} do
+    {_code, host_view, guest_view} = start_two_player_game(conn, "host-player", "guest-player")
+
+    host_view
+    |> element("button[phx-click='take_action'][phx-value-action='foreign_aid']")
+    |> render_click()
+
+    assert has_element?(guest_view, "#action-block-modal")
+
+    render_hook(guest_view, "block", %{"role" => "not-a-role"})
+
+    assert has_element?(guest_view, "#flash-group", "That role cannot block this action.")
+    assert has_element?(guest_view, "#action-block-modal")
+    assert has_element?(host_view, "#action-block-actor-waiting")
+  end
+
+  defp start_two_player_game(conn, host_id, guest_id) do
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_id, "Guest", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    {:ok, guest_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_id)
+      |> live(~p"/rooms/#{code}?name=Guest")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    {code, host_view, guest_view}
+  end
 end

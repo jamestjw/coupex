@@ -229,6 +229,47 @@ defmodule Coupex.GameTest do
     assert updated.winner_id == "p2"
   end
 
+  test "failed assassinate challenge with eliminated target advances without blocking" do
+    game = %{
+      status: :active,
+      active_player_id: "p1",
+      turn_number: 1,
+      round_number: 1,
+      treasury: 44,
+      deck: [:duke, :captain, :ambassador, :contessa, :assassin],
+      winner_id: nil,
+      phase: %{kind: :awaiting_action},
+      log: [],
+      players: [
+        %{
+          id: "p1",
+          name: "Isolde",
+          coins: 3,
+          influences: [%{role: :assassin, revealed: false}, %{role: :duke, revealed: false}]
+        },
+        %{
+          id: "p2",
+          name: "Magnus",
+          coins: 2,
+          influences: [%{role: :captain, revealed: true}, %{role: :contessa, revealed: false}]
+        },
+        %{
+          id: "p3",
+          name: "Rhea",
+          coins: 2,
+          influences: [%{role: :captain, revealed: false}, %{role: :ambassador, revealed: false}]
+        }
+      ]
+    }
+
+    assert {:ok, game} = Game.declare_action(game, "p1", "assassinate", "p2")
+    assert {:ok, updated} = Game.challenge(game, "p2")
+
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p3"
+    assert updated.turn_number == 2
+  end
+
   defp base_game(player_one_overrides, player_two_overrides) do
     %{
       status: :active,

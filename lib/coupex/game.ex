@@ -510,7 +510,10 @@ defmodule Coupex.Game do
   end
 
   defp after_action_responses(game, pending) do
-    if pending.block_roles == [] do
+    block_candidates = block_candidates(game, pending.actor_id, pending.action, pending.target_id)
+    pending = %{pending | block_candidates: block_candidates}
+
+    if pending.block_roles == [] or block_candidates == [] do
       {:ok, resolve_and_advance(game, pending)}
     else
       {:ok,
@@ -598,12 +601,16 @@ defmodule Coupex.Game do
         log_action_resolution(game, pending, %{gained: amount, lost: amount})
 
       "assassinate" ->
-        begin_reveal_phase(
-          game,
-          pending.target_id,
-          "Choose an influence to lose to the assassination.",
-          %{type: :advance_turn}
-        )
+        if eliminated?(fetch_player!(game, pending.target_id)) do
+          game
+        else
+          begin_reveal_phase(
+            game,
+            pending.target_id,
+            "Choose an influence to lose to the assassination.",
+            %{type: :advance_turn}
+          )
+        end
 
       "exchange" ->
         begin_exchange(game, pending.actor_id)
@@ -902,8 +909,14 @@ defmodule Coupex.Game do
   defp block_candidates(game, actor_id, "foreign_aid", _target_id),
     do: alive_other_player_ids(game, actor_id)
 
-  defp block_candidates(_game, _actor_id, action, target_id)
-       when action in ["assassinate", "steal"], do: [target_id]
+  defp block_candidates(game, _actor_id, action, target_id)
+       when action in ["assassinate", "steal"] do
+    if Enum.any?(game.players, &(&1.id == target_id and not eliminated?(&1))) do
+      [target_id]
+    else
+      []
+    end
+  end
 
   defp block_candidates(_game, _actor_id, _action, _target_id), do: []
 

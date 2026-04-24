@@ -97,23 +97,34 @@ defmodule CoupexWeb.RoomLive do
   end
 
   def handle_event("reveal", %{"index" => index}, socket) do
-    room_action(socket, fn s ->
-      RoomServer.reveal(s.code, s.viewer_id, String.to_integer(index))
-    end)
+    case parse_non_negative_integer(index) do
+      {:ok, parsed_index} ->
+        room_action(socket, fn s ->
+          RoomServer.reveal(s.code, s.viewer_id, parsed_index)
+        end)
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "Choose one of your influences.")}
+    end
   end
 
   def handle_event("toggle_exchange", %{"index" => index}, socket) do
-    parsed = String.to_integer(index)
-    selected = socket.assigns.exchange_selection
+    case parse_non_negative_integer(index) do
+      {:ok, parsed} ->
+        selected = socket.assigns.exchange_selection
 
-    next_selection =
-      if parsed in selected do
-        List.delete(selected, parsed)
-      else
-        selected ++ [parsed]
-      end
+        next_selection =
+          if parsed in selected do
+            List.delete(selected, parsed)
+          else
+            selected ++ [parsed]
+          end
 
-    {:noreply, assign(socket, :exchange_selection, next_selection)}
+        {:noreply, assign(socket, :exchange_selection, next_selection)}
+
+      :error ->
+        {:noreply, put_flash(socket, :error, "Choose a valid exchange card.")}
+    end
   end
 
   def handle_event("confirm_exchange", _, socket) do
@@ -869,6 +880,13 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp parse_non_negative_integer(value) do
+    case Integer.parse(to_string(value)) do
+      {parsed, ""} when parsed >= 0 -> {:ok, parsed}
+      _ -> :error
+    end
+  end
 
   defp influence_action_card(assigns) do
     assigns =

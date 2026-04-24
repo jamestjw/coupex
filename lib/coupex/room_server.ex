@@ -6,6 +6,13 @@ defmodule Coupex.RoomServer do
   alias Coupex.Game
 
   @topic_prefix "room:"
+  @block_roles %{
+    "duke" => :duke,
+    "assassin" => :assassin,
+    "captain" => :captain,
+    "ambassador" => :ambassador,
+    "contessa" => :contessa
+  }
 
   def start_link(code) do
     GenServer.start_link(__MODULE__, code, name: via(code))
@@ -125,9 +132,13 @@ defmodule Coupex.RoomServer do
   end
 
   def handle_call({:block, player_id, role_id}, _from, state) do
-    reply_with_game(state, player_id, fn game ->
-      Game.block(game, player_id, String.to_existing_atom(role_id))
-    end)
+    with {:ok, role} <- parse_block_role(role_id) do
+      reply_with_game(state, player_id, fn game ->
+        Game.block(game, player_id, role)
+      end)
+    else
+      {:error, message} -> {:reply, {:error, message}, state}
+    end
   end
 
   def handle_call({:reveal, player_id, index}, _from, state) do
@@ -253,6 +264,19 @@ defmodule Coupex.RoomServer do
   defp ensure_waiting(state) do
     if is_nil(state.game), do: :ok, else: {:error, "The game is already underway."}
   end
+
+  defp parse_block_role(role_id) when is_binary(role_id) do
+    role_id
+    |> String.trim()
+    |> String.downcase()
+    |> then(&Map.fetch(@block_roles, &1))
+    |> case do
+      {:ok, role} -> {:ok, role}
+      :error -> {:error, "That role cannot block this action."}
+    end
+  end
+
+  defp parse_block_role(_role_id), do: {:error, "That role cannot block this action."}
 
   defp topic(code), do: @topic_prefix <> normalize_code(code)
 
