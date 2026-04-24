@@ -301,6 +301,77 @@ defmodule CoupexWeb.RoomLiveTest do
     refute has_element?(host_view, "#action-block-modal")
   end
 
+  test "three-player challenge flow resolves reveal and advances turn", %{conn: conn} do
+    host_id = "host-player"
+    guest_one_id = "guest-one"
+    guest_two_id = "guest-two"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_one_id, "Guest One", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_two_id, "Guest Two", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    {:ok, guest_one_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_one_id)
+      |> live(~p"/rooms/#{code}?name=Guest One")
+
+    {:ok, guest_two_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_two_id)
+      |> live(~p"/rooms/#{code}?name=Guest Two")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_one_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_two_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    host_view
+    |> element("button[phx-click='take_action'][phx-value-action='tax']")
+    |> render_click()
+
+    assert has_element?(guest_one_view, "#claim-challenge-modal")
+    assert has_element?(guest_two_view, "#claim-challenge-modal")
+
+    guest_one_view |> element("#claim-allow-button") |> render_click()
+    guest_two_view |> element("#claim-challenge-button") |> render_click()
+
+    assert {:ok, host_snapshot} = RoomServer.snapshot(code, host_id)
+    assert {:ok, guest_one_snapshot} = RoomServer.snapshot(code, guest_one_id)
+    assert {:ok, guest_two_snapshot} = RoomServer.snapshot(code, guest_two_id)
+
+    assert host_snapshot.game.interaction.kind == :reveal
+    assert guest_one_snapshot.game.interaction.kind == :reveal
+    assert guest_two_snapshot.game.interaction.kind == :reveal
+
+    revealer_view =
+      cond do
+        host_snapshot.game.interaction.your_turn -> host_view
+        guest_one_snapshot.game.interaction.your_turn -> guest_one_view
+        guest_two_snapshot.game.interaction.your_turn -> guest_two_view
+      end
+
+    revealer_view
+    |> element("#your-influence-0")
+    |> render_click()
+
+    assert {:ok, resolved_snapshot} = RoomServer.snapshot(code, host_id)
+    assert resolved_snapshot.game.interaction.kind == :action
+    assert resolved_snapshot.game.active_player_id == guest_one_id
+    assert resolved_snapshot.game.turn_number == 2
+
+    assert Enum.any?(resolved_snapshot.game.log, fn entry -> entry.kind == :challenge end)
+
+    refute has_element?(host_view, "#claim-challenge-modal")
+    refute has_element?(guest_one_view, "#claim-challenge-modal")
+    refute has_element?(guest_two_view, "#claim-challenge-modal")
+    assert has_element?(guest_one_view, ".dock-status-label", "Your Move")
+  end
+
   test "malformed reveal index does not crash the LiveView", %{conn: conn} do
     {_code, host_view, _guest_view} = start_two_player_game(conn, "host-player", "guest-player")
 
