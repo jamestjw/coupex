@@ -415,17 +415,24 @@ defmodule Coupex.Game do
         eligible_ids: eligible_ids,
         passed_ids: passed_ids
       } ->
-        block_roles =
-          if viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id),
-            do: pending.block_roles,
-            else: []
+        can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
+
+        awaiting_others =
+          viewer_id in eligible_ids and
+            MapSet.member?(passed_ids, viewer_id) and
+            Enum.any?(eligible_ids, fn player_id ->
+              player_id != viewer_id and not MapSet.member?(passed_ids, player_id)
+            end)
+
+        block_roles = if can_respond, do: pending.block_roles, else: []
 
         %{
           kind: :block,
           pending: public_pending(pending),
           block_roles: Enum.map(block_roles, &role_label/1),
           block_role_ids: Enum.map(block_roles, &Atom.to_string/1),
-          can_pass: viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
+          can_pass: can_respond,
+          awaiting_others: awaiting_others
         }
 
       %{

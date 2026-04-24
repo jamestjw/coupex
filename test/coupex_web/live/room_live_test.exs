@@ -167,8 +167,13 @@ defmodule CoupexWeb.RoomLiveTest do
     |> element("button[phx-click='take_action'][phx-value-action='foreign_aid']")
     |> render_click()
 
+    assert has_element?(guest_view, "#action-block-modal")
+    assert has_element?(guest_view, "#action-block-button-0")
+    assert has_element?(guest_view, "#action-block-pass-button")
+    assert has_element?(guest_view, "#action-block-timer")
+
     guest_view
-    |> element("button[phx-click='block'][phx-value-role='duke']")
+    |> element("#action-block-button-0")
     |> render_click()
 
     assert has_element?(host_view, "#block-challenge-modal")
@@ -181,5 +186,38 @@ defmodule CoupexWeb.RoomLiveTest do
 
     refute has_element?(host_view, "#block-response-waiting")
     refute has_element?(host_view, "#block-challenge-modal")
+  end
+
+  test "two-player block pass does not show waiting-for-others notice", %{conn: conn} do
+    host_id = "host-player"
+    guest_id = "guest-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_id, "Guest", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    {:ok, guest_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_id)
+      |> live(~p"/rooms/#{code}?name=Guest")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    host_view
+    |> element("button[phx-click='take_action'][phx-value-action='foreign_aid']")
+    |> render_click()
+
+    assert has_element?(guest_view, "#action-block-modal")
+
+    guest_view |> element("#action-block-pass-button") |> render_click()
+
+    refute has_element?(guest_view, "#action-block-response-waiting")
+    refute has_element?(guest_view, "#action-block-modal")
   end
 end

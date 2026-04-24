@@ -51,9 +51,13 @@ defmodule CoupexWeb.RoomLive do
 
   def handle_event("pass", _, socket) do
     response_key =
-      if socket.assigns.snapshot.game.interaction.kind in [:respond_action, :respond_block],
-        do: claim_key(socket.assigns.snapshot.game),
-        else: nil
+      if socket.assigns.snapshot.game.interaction.kind in [
+           :block,
+           :respond_action,
+           :respond_block
+         ],
+         do: claim_key(socket.assigns.snapshot.game),
+         else: nil
 
     room_action(
       socket,
@@ -362,6 +366,18 @@ defmodule CoupexWeb.RoomLive do
 
                     <div
                       :if={
+                        @snapshot.game.interaction.kind == :block and
+                          @claim_response_key == claim_key(@snapshot.game) and
+                          @snapshot.game.interaction.awaiting_others
+                      }
+                      id="action-block-response-waiting"
+                      class="response-card claim-response-waiting"
+                    >
+                      <p>You passed on blocking. Waiting for the rest of the table.</p>
+                    </div>
+
+                    <div
+                      :if={
                         @snapshot.game.interaction.kind == :respond_block and
                           @snapshot.game.interaction.block.player_id != @viewer_id and
                           @claim_response_key == claim_key(@snapshot.game) and
@@ -371,31 +387,6 @@ defmodule CoupexWeb.RoomLive do
                       class="response-card claim-response-waiting"
                     >
                       <p>You allowed this block. Waiting for the rest of the table.</p>
-                    </div>
-
-                    <div :if={@snapshot.game.interaction.kind == :block} class="response-card">
-                      <p>Block {@snapshot.game.interaction.pending.action_label}?</p>
-                      <div class="response-actions">
-                        <button
-                          :for={
-                            {role, index} <- Enum.with_index(@snapshot.game.interaction.block_roles)
-                          }
-                          type="button"
-                          class="court-button small"
-                          phx-click="block"
-                          phx-value-role={Enum.at(@snapshot.game.interaction.block_role_ids, index)}
-                        >
-                          {role}
-                        </button>
-                        <button
-                          :if={@snapshot.game.interaction.can_pass}
-                          type="button"
-                          class="court-button small"
-                          phx-click="pass"
-                        >
-                          Pass
-                        </button>
-                      </div>
                     </div>
 
                     <div :if={@snapshot.game.interaction.kind == :reveal} class="response-card">
@@ -468,6 +459,82 @@ defmodule CoupexWeb.RoomLive do
                   <span>Turn {@snapshot.game.turn_number}</span>
                 </div>
               </aside>
+            </div>
+
+            <div
+              :if={
+                @snapshot.game.interaction.kind == :block and
+                  @claim_response_key != claim_key(@snapshot.game)
+              }
+              id="action-block-modal"
+              class="drama-overlay"
+              phx-hook="ClaimChallengeCountdown"
+              data-auto-pass={to_string(@snapshot.game.interaction.can_pass)}
+              data-seconds="8"
+              data-claim-key={claim_key(@snapshot.game)}
+            >
+              <div class="drama-sheet">
+                <p class="drama-eyebrow">A block opportunity is open</p>
+                <h2 class="drama-title">
+                  Block <span>{@snapshot.game.interaction.pending.action_label}</span>?
+                </h2>
+
+                <p class="drama-body">
+                  <strong>{@snapshot.game.interaction.pending.actor_name}</strong>
+                  is attempting <em> {@snapshot.game.interaction.pending.action_label}</em>.
+                  Choose a role to block, or allow the action to continue.
+                </p>
+
+                <div
+                  :if={
+                    @snapshot.game.interaction.block_roles != [] or
+                      @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-actions"
+                >
+                  <button
+                    :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.block_roles)}
+                    id={"action-block-button-#{index}"}
+                    type="button"
+                    class="court-button small drama-button primary"
+                    phx-click="block"
+                    phx-value-role={Enum.at(@snapshot.game.interaction.block_role_ids, index)}
+                  >
+                    Block as {role}
+                  </button>
+                  <button
+                    :if={@snapshot.game.interaction.can_pass}
+                    id="action-block-pass-button"
+                    type="button"
+                    class="court-button small drama-button"
+                    phx-click="pass"
+                  >
+                    Pass
+                  </button>
+                </div>
+
+                <div
+                  :if={@snapshot.game.interaction.can_pass}
+                  id="action-block-timer"
+                  class="drama-timer"
+                >
+                  <span>Auto-pass in</span>
+                  <div class="drama-timer-bar">
+                    <span data-claim-timer-bar></span>
+                  </div>
+                  <span data-claim-countdown>8s</span>
+                </div>
+
+                <p
+                  :if={
+                    @snapshot.game.interaction.block_roles == [] and
+                      not @snapshot.game.interaction.can_pass
+                  }
+                  class="drama-waiting"
+                >
+                  Waiting for eligible players to respond.
+                </p>
+              </div>
             </div>
 
             <div
@@ -705,6 +772,20 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(value), do: value
 
   defp claim_key(nil), do: nil
+
+  defp claim_key(%{
+         interaction: %{kind: :block, pending: pending},
+         turn_number: turn_number
+       }) do
+    [
+      Integer.to_string(turn_number),
+      pending.actor_id,
+      pending.action,
+      pending.target_id || "none",
+      "block"
+    ]
+    |> Enum.join(":")
+  end
 
   defp claim_key(%{
          interaction: %{kind: :respond_action, pending: pending},
