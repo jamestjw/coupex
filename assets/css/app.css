@@ -823,6 +823,7 @@ body::before {
   margin-top: 0.18rem;
   font-family: "DM Serif Display", Georgia, serif;
   font-size: 0.7rem;
+  font-weight: 700;
   line-height: 1;
   text-align: left;
 }
