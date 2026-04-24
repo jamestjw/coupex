@@ -8,6 +8,6 @@ defmodule CoupexWeb.HomeLiveTest do
 
     assert has_element?(view, "#entry-form")
     assert has_element?(view, ".landing-title")
-    assert has_element?(view, "button[phx-click='create_room']")
+    assert has_element?(view, "button[name='intent'][value='create']")
   end
 end

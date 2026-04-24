@@ -124,10 +124,9 @@ defmodule CoupexWeb.RoomLive do
             <section class="table-panel">
               <div class="lobby-strip">
                 <%= for player <- @snapshot.lobby_players do %>
-                  <div class={["lobby-chip", player.connected || "offline", player.host && "host"]}>
+                  <div class={["lobby-chip", player.host && "host"]}>
                     <span>{player.name}</span>
                     <span :if={player.host}>Host</span>
-                    <span :if={!player.connected}>Away</span>
                   </div>
                 <% end %>
               </div>
