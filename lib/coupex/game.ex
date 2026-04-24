@@ -1,6 +1,10 @@
 defmodule Coupex.Game do
   @moduledoc false
 
+  alias Coupex.Game.Log
+  alias Coupex.Game.Phase
+  alias Coupex.Game.Validation
+
   @roles [:duke, :assassin, :captain, :ambassador, :contessa]
   @treasury_coins 50
 
@@ -91,7 +95,7 @@ defmodule Coupex.Game do
          treasury: @treasury_coins - length(game_players) * 2,
          deck: deck_after_deal,
          phase: %{kind: :awaiting_action},
-         log: [event(:break, %{text: "The court assembles"})],
+         log: [Log.event(:break, %{text: "The court assembles"})],
          winner_id: nil
        }}
     else
@@ -100,12 +104,12 @@ defmodule Coupex.Game do
   end
 
   def declare_action(game, actor_id, action_id, target_id \\ nil) do
-    with :ok <- ensure_active(game),
-         :ok <- ensure_turn(game, actor_id),
-         :ok <- ensure_phase(game, :awaiting_action),
+    with :ok <- Validation.ensure_active(game),
+         :ok <- Validation.ensure_turn(game, actor_id),
+         :ok <- Validation.ensure_phase(game, :awaiting_action),
          {:ok, spec} <- fetch_action(action_id),
-         :ok <- ensure_action_allowed(game, actor_id, spec),
-         :ok <- ensure_target(game, actor_id, spec, target_id) do
+         :ok <- Validation.ensure_action_allowed(game, actor_id, spec),
+         :ok <- Validation.ensure_target(game, actor_id, spec, target_id) do
       pending = %{
         actor_id: actor_id,
         actor_name: player_name(game, actor_id),
@@ -114,13 +118,13 @@ defmodule Coupex.Game do
         claim_role: spec.claim,
         target_id: target_id,
         target_name: target_name(game, target_id),
-        block_roles: block_roles(spec.id),
-        block_candidates: block_candidates(game, actor_id, spec.id, target_id),
+        block_roles: Phase.block_roles(spec.id),
+        block_candidates: Phase.block_candidates(game, actor_id, spec.id, target_id),
         cost: spec.cost
       }
 
       game = pay_cost(game, actor_id, spec.cost)
-      game = push_log(game, event(:action, describe_action(pending)))
+      game = Log.push_log(game, Log.event(:action, Log.describe_action(pending)))
 
       cond do
         spec.id == "income" ->
@@ -167,7 +171,7 @@ defmodule Coupex.Game do
         passed_ids: passed_ids,
         pending: pending
       } ->
-        with :ok <- ensure_member(eligible_ids, player_id) do
+        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
           next_passed = MapSet.put(passed_ids, player_id)
 
           if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
@@ -183,7 +187,7 @@ defmodule Coupex.Game do
         passed_ids: passed_ids,
         pending: pending
       } ->
-        with :ok <- ensure_member(eligible_ids, player_id) do
+        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
           next_passed = MapSet.put(passed_ids, player_id)
 
           if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
@@ -199,14 +203,14 @@ defmodule Coupex.Game do
         passed_ids: passed_ids,
         block: block
       } ->
-        with :ok <- ensure_member(eligible_ids, player_id) do
+        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
           next_passed = MapSet.put(passed_ids, player_id)
 
           if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
             game =
-              push_log(
+              Log.push_log(
                 game,
-                event(:block, %{
+                Log.event(:block, %{
                   actor: player_name(game, block.player_id),
                   detail: "held the block"
                 })
@@ -226,7 +230,7 @@ defmodule Coupex.Game do
   def challenge(game, challenger_id) do
     case game.phase do
       %{kind: :awaiting_action_responses, eligible_ids: eligible_ids, pending: pending} ->
-        with :ok <- ensure_member(eligible_ids, challenger_id) do
+        with :ok <- Validation.ensure_member(eligible_ids, challenger_id) do
           resolve_challenge(game, challenger_id, pending.actor_id, pending.claim_role, %{
             success: %{type: :continue_after_failed_action_challenge, pending: pending},
             failure: %{type: :cancel_after_successful_action_challenge}
@@ -239,7 +243,7 @@ defmodule Coupex.Game do
         pending: pending,
         block: block
       } ->
-        with :ok <- ensure_member(eligible_ids, challenger_id) do
+        with :ok <- Validation.ensure_member(eligible_ids, challenger_id) do
           resolve_challenge(game, challenger_id, block.player_id, block.role, %{
             success: %{type: :block_stands},
             failure: %{type: :resume_after_successful_block_challenge, pending: pending}
@@ -254,16 +258,16 @@ defmodule Coupex.Game do
   def block(game, blocker_id, role) do
     case game.phase do
       %{kind: :awaiting_block, pending: pending, eligible_ids: eligible_ids} ->
-        with :ok <- ensure_member(eligible_ids, blocker_id),
-             :ok <- ensure_block_role(pending.action, role) do
+        with :ok <- Validation.ensure_member(eligible_ids, blocker_id),
+             :ok <- Validation.ensure_block_role(pending.action, role) do
           block = %{player_id: blocker_id, role: role}
 
           game =
-            push_log(
+            Log.push_log(
               game,
-              event(:block, %{
+              Log.event(:block, %{
                 actor: player_name(game, blocker_id),
-                role: role_label(role),
+                role: Log.role_label(role),
                 detail: "blocked #{pending.action_label}"
               })
             )
@@ -286,7 +290,7 @@ defmodule Coupex.Game do
   def reveal_influence(game, player_id, index) do
     case game.phase do
       %{kind: :awaiting_reveal, player_id: ^player_id, continuation: continuation} ->
-        with :ok <- ensure_reveal_index(game, player_id, index) do
+        with :ok <- Validation.ensure_reveal_index(game, player_id, index) do
           game = reveal_player_influence(game, player_id, index)
           game = check_winner(game)
 
@@ -316,7 +320,7 @@ defmodule Coupex.Game do
       } ->
         indexes = Enum.uniq(indexes)
 
-        with :ok <- ensure_exchange_indexes(options, indexes, keep_count) do
+        with :ok <- Validation.ensure_exchange_indexes(options, indexes, keep_count) do
           kept = Enum.map(indexes, &Enum.at(options, &1))
           returned = list_difference(options, kept)
 
@@ -330,9 +334,9 @@ defmodule Coupex.Game do
           game = %{game | deck: Enum.shuffle(deck_rest ++ returned)}
 
           game =
-            push_log(
+            Log.push_log(
               game,
-              event(:exchange, %{
+              Log.event(:exchange, %{
                 actor: player_name(game, player_id),
                 detail: "rearranged the court"
               })
@@ -440,7 +444,7 @@ defmodule Coupex.Game do
         %{
           kind: :block,
           pending: public_pending(pending),
-          block_roles: Enum.map(block_roles, &role_label/1),
+          block_roles: Enum.map(block_roles, &Log.role_label/1),
           block_role_ids: Enum.map(block_roles, &Atom.to_string/1),
           can_pass: can_respond,
           awaiting_others: awaiting_others,
@@ -476,7 +480,7 @@ defmodule Coupex.Game do
           block: %{
             player_id: block.player_id,
             player_name: player_name(game, block.player_id),
-            role: role_label(block.role)
+            role: Log.role_label(block.role)
           },
           can_challenge: can_respond,
           can_pass: can_respond,
@@ -501,7 +505,7 @@ defmodule Coupex.Game do
           kind: :exchange,
           your_turn: viewer_id == player_id,
           keep_count: keep_count,
-          options: if(viewer_id == player_id, do: Enum.map(options, &role_label/1), else: [])
+          options: if(viewer_id == player_id, do: Enum.map(options, &Log.role_label/1), else: [])
         }
 
       %{kind: :game_over} ->
@@ -510,7 +514,9 @@ defmodule Coupex.Game do
   end
 
   defp after_action_responses(game, pending) do
-    block_candidates = block_candidates(game, pending.actor_id, pending.action, pending.target_id)
+    block_candidates =
+      Phase.block_candidates(game, pending.actor_id, pending.action, pending.target_id)
+
     pending = %{pending | block_candidates: block_candidates}
 
     if pending.block_roles == [] or block_candidates == [] do
@@ -530,12 +536,12 @@ defmodule Coupex.Game do
     truthful = has_unrevealed_role?(game, claimed_by_id, role)
 
     game =
-      push_log(
+      Log.push_log(
         game,
-        event(:challenge, %{
+        Log.event(:challenge, %{
           actor: player_name(game, challenger_id),
           target: player_name(game, claimed_by_id),
-          role: role_label(role),
+          role: Log.role_label(role),
           truthful: truthful
         })
       )
@@ -544,11 +550,11 @@ defmodule Coupex.Game do
       game = replace_proven_role(game, claimed_by_id, role)
 
       game =
-        push_log(
+        Log.push_log(
           game,
-          event(:exchange, %{
+          Log.event(:exchange, %{
             actor: player_name(game, claimed_by_id),
-            detail: "revealed #{role_label(role)} and exchanged it for a new influence."
+            detail: "revealed #{Log.role_label(role)} and exchanged it for a new influence."
           })
         )
 
@@ -598,16 +604,16 @@ defmodule Coupex.Game do
       "foreign_aid" ->
         game
         |> resolve_income(pending.actor_id, 2)
-        |> log_action_resolution(pending, %{gained: 2})
+        |> Log.log_action_resolution(pending, %{gained: 2})
 
       "tax" ->
         game
         |> resolve_income(pending.actor_id, 3)
-        |> log_action_resolution(pending, %{gained: 3})
+        |> Log.log_action_resolution(pending, %{gained: 3})
 
       "steal" ->
         {game, amount} = resolve_steal(game, pending.actor_id, pending.target_id)
-        log_action_resolution(game, pending, %{gained: amount, lost: amount})
+        Log.log_action_resolution(game, pending, %{gained: amount, lost: amount})
 
       "assassinate" ->
         if eliminated?(fetch_player!(game, pending.target_id)) do
@@ -749,7 +755,7 @@ defmodule Coupex.Game do
       }
 
     if round_number > game.round_number do
-      push_log(advanced, event(:break, %{text: "Round #{round_number}"}))
+      Log.push_log(advanced, Log.event(:break, %{text: "Round #{round_number}"}))
     else
       advanced
     end
@@ -761,7 +767,7 @@ defmodule Coupex.Game do
     case alive_players do
       [winner] ->
         game
-        |> push_log(event(:win, %{actor: winner.name, detail: "claims the court"}))
+        |> Log.push_log(Log.event(:win, %{actor: winner.name, detail: "claims the court"}))
         |> Map.put(:winner_id, winner.id)
         |> Map.put(:status, :finished)
 
@@ -808,10 +814,10 @@ defmodule Coupex.Game do
 
     game
     |> replace_player(updated_player)
-    |> push_log(
-      event(:reveal, %{
+    |> Log.push_log(
+      Log.event(:reveal, %{
         actor: player.name,
-        role: role_label(influence.role),
+        role: Log.role_label(influence.role),
         detail: "loses influence"
       })
     )
@@ -847,10 +853,10 @@ defmodule Coupex.Game do
     Enum.map(player.influences, fn influence ->
       cond do
         player.id == viewer_id ->
-          %{role: role_label(influence.role), revealed: influence.revealed, hidden: false}
+          %{role: Log.role_label(influence.role), revealed: influence.revealed, hidden: false}
 
         influence.revealed ->
-          %{role: role_label(influence.role), revealed: true, hidden: false}
+          %{role: Log.role_label(influence.role), revealed: true, hidden: false}
 
         true ->
           %{role: nil, revealed: false, hidden: true}
@@ -864,42 +870,12 @@ defmodule Coupex.Game do
       actor_name: pending.actor_name,
       action: pending.action,
       action_label: pending.action_label,
-      claim_role: pending.claim_role && role_label(pending.claim_role),
+      claim_role: pending.claim_role && Log.role_label(pending.claim_role),
       target_id: pending.target_id,
       target_name: pending.target_name,
-      block_roles: Enum.map(pending.block_roles, &role_label/1)
+      block_roles: Enum.map(pending.block_roles, &Log.role_label/1)
     }
   end
-
-  defp describe_action(pending) do
-    base =
-      %{
-        actor: pending.actor_name,
-        detail: pending.action_label,
-        target: pending.target_name
-      }
-      |> maybe_put(:role, pending.claim_role && role_label(pending.claim_role))
-      |> maybe_put(:spent, if(pending.cost > 0, do: pending.cost, else: nil))
-      |> maybe_put(:gained, if(pending.action == "income", do: 1, else: nil))
-
-    base
-  end
-
-  defp log_action_resolution(game, pending, attrs) do
-    resolution =
-      %{
-        actor: pending.actor_name,
-        role: pending.claim_role && role_label(pending.claim_role),
-        verb: "unopposed",
-        detail: "#{pending.action_label} stands"
-      }
-      |> Map.merge(attrs)
-
-    push_log(game, event(:action, resolution))
-  end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp build_deck, do: Enum.flat_map(@roles, &List.duplicate(&1, 3))
 
@@ -910,25 +886,6 @@ defmodule Coupex.Game do
     end
   end
 
-  defp block_roles("foreign_aid"), do: [:duke]
-  defp block_roles("assassinate"), do: [:contessa]
-  defp block_roles("steal"), do: [:captain, :ambassador]
-  defp block_roles(_), do: []
-
-  defp block_candidates(game, actor_id, "foreign_aid", _target_id),
-    do: alive_other_player_ids(game, actor_id)
-
-  defp block_candidates(game, _actor_id, action, target_id)
-       when action in ["assassinate", "steal"] do
-    if Enum.any?(game.players, &(&1.id == target_id and not eliminated?(&1))) do
-      [target_id]
-    else
-      []
-    end
-  end
-
-  defp block_candidates(_game, _actor_id, _action, _target_id), do: []
-
   defp hidden_roles(player) do
     player.influences
     |> Enum.reject(& &1.revealed)
@@ -937,90 +894,6 @@ defmodule Coupex.Game do
 
   defp alive_influence_count(player), do: Enum.count(player.influences, &(not &1.revealed))
   defp eliminated?(player), do: alive_influence_count(player) == 0
-
-  defp ensure_active(%{status: :active}), do: :ok
-  defp ensure_active(_game), do: {:error, "The game is over."}
-
-  defp ensure_turn(game, player_id) do
-    if game.active_player_id == player_id, do: :ok, else: {:error, "It is not your turn."}
-  end
-
-  defp ensure_phase(game, expected_kind) do
-    if game.phase.kind == expected_kind,
-      do: :ok,
-      else: {:error, "That action is not available right now."}
-  end
-
-  defp ensure_action_allowed(game, player_id, spec) do
-    player = fetch_player!(game, player_id)
-
-    cond do
-      player.coins >= 10 and spec.id != "coup" ->
-        {:error, "You must coup when you have 10 or more coins."}
-
-      player.coins < spec.cost ->
-        {:error, "You do not have enough coins."}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp ensure_target(_game, _actor_id, %{target: false}, nil), do: :ok
-
-  defp ensure_target(game, actor_id, %{target: true}, target_id) do
-    cond do
-      is_nil(target_id) ->
-        {:error, "Choose a target."}
-
-      actor_id == target_id ->
-        {:error, "You cannot target yourself."}
-
-      is_nil(Enum.find(game.players, &(&1.id == target_id and not eliminated?(&1)))) ->
-        {:error, "Choose a living target."}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp ensure_target(_game, _actor_id, _spec, _target_id),
-    do: {:error, "This action does not take a target."}
-
-  defp ensure_member(list, player_id) do
-    if player_id in list, do: :ok, else: {:error, "You cannot respond here."}
-  end
-
-  defp ensure_block_role(action, role) when is_binary(role),
-    do: ensure_block_role(action, String.to_existing_atom(role))
-
-  defp ensure_block_role(action, role),
-    do:
-      if(role in block_roles(action),
-        do: :ok,
-        else: {:error, "That role cannot block this action."}
-      )
-
-  defp ensure_reveal_index(game, player_id, index) do
-    player = fetch_player!(game, player_id)
-    influence = Enum.at(player.influences, index)
-
-    cond do
-      is_nil(influence) -> {:error, "Choose one of your influences."}
-      influence.revealed -> {:error, "That influence is already revealed."}
-      true -> :ok
-    end
-  end
-
-  defp ensure_exchange_indexes(options, indexes, keep_count) do
-    valid = Enum.all?(indexes, &(&1 >= 0 and &1 < length(options)))
-
-    cond do
-      length(indexes) != keep_count -> {:error, "Choose exactly #{keep_count} cards to keep."}
-      not valid -> {:error, "Choose valid exchange cards."}
-      true -> :ok
-    end
-  end
 
   defp has_unrevealed_role?(game, player_id, role) do
     game
@@ -1061,18 +934,6 @@ defmodule Coupex.Game do
   defp player_name(game, player_id), do: fetch_player!(game, player_id).name
   defp target_name(_game, nil), do: nil
   defp target_name(game, target_id), do: player_name(game, target_id)
-
-  defp push_log(game, entry) do
-    %{game | log: [Map.put_new(entry, :turn, game.turn_number) | game.log]}
-  end
-
-  defp event(kind, attrs), do: Map.put(attrs, :kind, kind)
-
-  defp role_label(role) do
-    role
-    |> Atom.to_string()
-    |> String.capitalize()
-  end
 
   defp list_difference(items, selected) do
     Enum.reduce(selected, items, fn value, acc -> List.delete(acc, value) end)

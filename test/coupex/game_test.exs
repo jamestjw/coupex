@@ -423,7 +423,10 @@ defmodule Coupex.GameTest do
             id: "p3",
             name: "Rhea",
             coins: 2,
-            influences: [%{role: :ambassador, revealed: false}, %{role: :captain, revealed: false}]
+            influences: [
+              %{role: :ambassador, revealed: false},
+              %{role: :captain, revealed: false}
+            ]
           },
           player_three_overrides
         )
