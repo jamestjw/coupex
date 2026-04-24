@@ -62,7 +62,6 @@ body::before {
 }
 
 .landing-tag,
-.room-label,
 .brand-sub,
 .court-stats span,
 .lobby-chip,
@@ -149,6 +148,9 @@ body::before {
 .landing-room-field .room-label {
   display: inline-block;
   margin-bottom: 0.55rem;
+  font-size: 1rem;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .landing-primary-button,

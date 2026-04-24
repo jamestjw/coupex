@@ -67,7 +67,7 @@ defmodule CoupexWeb.HomeLive do
 
             <div class="landing-room-row">
               <div class="landing-room-field">
-                <span class="room-label">Room</span>
+                <span class="room-label">Room code</span>
                 <.input
                   field={@form[:room_code]}
                   type="text"
