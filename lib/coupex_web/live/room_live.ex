@@ -4,12 +4,13 @@ defmodule CoupexWeb.RoomLive do
   alias Coupex.RoomServer
 
   @impl true
-  def mount(%{"code" => code}, session, socket) do
+  def mount(%{"code" => code} = params, session, socket) do
     viewer_id = session["visitor_id"]
+    player_name = Map.get(params, "name")
 
     if connected?(socket), do: RoomServer.subscribe(code)
 
-    case RoomServer.join_room(code, viewer_id, nil, self()) do
+    case RoomServer.join_room(code, viewer_id, player_name, self()) do
       {:ok, snapshot} ->
         {:ok,
          socket
@@ -393,35 +394,21 @@ defmodule CoupexWeb.RoomLive do
             <div class="landing-card lobby-card">
               <p class="landing-tag">Room {@snapshot.code}</p>
               <h1 class="landing-title">Court Gathering<span>.</span></h1>
-              <p class="landing-copy">
-                Seat two to six players, then let the host begin. Disconnects keep their seat so they
-                can rejoin the room.
-              </p>
 
               <div class="lobby-list">
                 <%= for player <- @snapshot.lobby_players do %>
-                  <div class={["lobby-row", player.connected || "offline"]}>
+                  <div class="lobby-row">
                     <div>
                       <strong>{player.name}</strong>
-                      <span>
-                        <%= cond do %>
-                          <% player.host -> %>
-                            Host
-                          <% player.ready -> %>
-                            Ready
-                          <% true -> %>
-                            Waiting
-                        <% end %>
-                      </span>
                     </div>
-                    <span>{if player.connected, do: "Present", else: "Away"}</span>
+                    <span class="lobby-status">{lobby_status(player)}</span>
                   </div>
                 <% end %>
               </div>
 
               <div class="lobby-actions">
                 <button type="button" class="court-button" phx-click="toggle_ready">
-                  Toggle Ready
+                  {if viewer_ready?(@snapshot), do: "Mark Unready", else: "Mark Ready"}
                 </button>
                 <button
                   type="button"
@@ -478,4 +465,23 @@ defmodule CoupexWeb.RoomLive do
     parts = if entry[:target], do: parts ++ ["against #{entry.target}"], else: parts
     Enum.join(parts, " ")
   end
+
+  defp viewer_ready?(snapshot) do
+    snapshot.lobby_players
+    |> Enum.find(&(&1.id == snapshot.viewer_id))
+    |> then(&(&1 && &1.ready))
+  end
+
+  defp lobby_status(player) do
+    []
+    |> maybe_add(player.host, "Host")
+    |> maybe_add(player.ready, "Ready")
+    |> case do
+      [] -> "Waiting"
+      labels -> Enum.join(labels, " · ")
+    end
+  end
+
+  defp maybe_add(labels, true, label), do: labels ++ [label]
+  defp maybe_add(labels, false, _label), do: labels
 end

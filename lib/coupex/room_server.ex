@@ -142,13 +142,10 @@ defmodule Coupex.RoomServer do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     next_state =
-      Enum.reduce(state.players, state, fn {player_id, player}, acc ->
-        if player.monitor_ref == ref do
-          put_in(acc.players[player_id], %{player | connected: false, monitor_ref: nil, pid: nil})
-        else
-          acc
-        end
-      end)
+      case Enum.find(state.players, fn {_player_id, player} -> player.monitor_ref == ref end) do
+        {player_id, _player} -> remove_player(state, player_id)
+        nil -> state
+      end
 
     broadcast(next_state)
     {:noreply, next_state}
@@ -176,8 +173,7 @@ defmodule Coupex.RoomServer do
           id: player.id,
           name: player.name,
           ready: player.ready,
-          host: player.id == state.host_id,
-          connected: player.connected
+          host: player.id == state.host_id
         }
       end)
 
@@ -192,6 +188,14 @@ defmodule Coupex.RoomServer do
     }
   end
 
+  defp remove_player(state, player_id) do
+    players = Map.delete(state.players, player_id)
+    order = List.delete(state.order, player_id)
+    host_id = if state.host_id == player_id, do: List.first(order), else: state.host_id
+
+    %{state | players: players, order: order, host_id: host_id}
+  end
+
   defp upsert_player(state, player_id, name, pid) do
     ref = Process.monitor(pid)
     existing = Map.get(state.players, player_id)
@@ -200,7 +204,6 @@ defmodule Coupex.RoomServer do
       id: player_id,
       name: choose_name(name, existing),
       ready: if(existing, do: existing.ready, else: false),
-      connected: true,
       monitor_ref: ref,
       pid: pid
     }

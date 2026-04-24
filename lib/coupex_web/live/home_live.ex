@@ -26,7 +26,10 @@ defmodule CoupexWeb.HomeLive do
       case intent do
         "create" ->
           case RoomServer.create_room(socket.assigns.visitor_id, name, self()) do
-            {:ok, code} -> {:noreply, push_navigate(socket, to: ~p"/rooms/#{code}")}
+            {:ok, code} ->
+              {:noreply,
+               push_navigate(socket, to: ~p"/rooms/#{code}?name=#{normalized_name(name)}")}
+
             {:error, message} -> {:noreply, assign(socket, :form_error, message)}
           end
 
@@ -34,7 +37,11 @@ defmodule CoupexWeb.HomeLive do
           with :ok <- validate_room_code(room_code),
                {:ok, _snapshot} <-
                  RoomServer.join_room(room_code, socket.assigns.visitor_id, name, self()) do
-            {:noreply, push_navigate(socket, to: ~p"/rooms/#{String.upcase(String.trim(room_code))}")}
+            {:noreply,
+             push_navigate(
+               socket,
+               to: ~p"/rooms/#{String.upcase(String.trim(room_code))}?name=#{normalized_name(name)}"
+             )}
           else
             {:error, message} -> {:noreply, assign(socket, :form_error, message)}
           end
@@ -62,6 +69,8 @@ defmodule CoupexWeb.HomeLive do
       :ok
     end
   end
+
+  defp normalized_name(name), do: name |> to_string() |> String.trim()
 
   @impl true
   def render(assigns) do

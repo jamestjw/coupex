@@ -321,9 +321,17 @@ body::before {
   background: rgba(255, 250, 241, 0.68);
 }
 
-.lobby-chip.offline,
-.lobby-row.offline {
-  opacity: 0.55;
+.lobby-actions {
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.lobby-actions .court-button {
+  min-width: 0;
+}
+
+.lobby-card .landing-note {
+  margin-top: 1.25rem;
 }
 
 .table-stage {
@@ -579,6 +587,16 @@ body::before {
   display: block;
   font-size: 1.15rem;
   font-family: "DM Serif Display", Georgia, serif;
+}
+
+.lobby-status {
+  align-self: center;
+  text-align: right;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 1100px) {
