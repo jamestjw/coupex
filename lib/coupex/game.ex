@@ -543,6 +543,15 @@ defmodule Coupex.Game do
     if truthful do
       game = replace_proven_role(game, claimed_by_id, role)
 
+      game =
+        push_log(
+          game,
+          event(:exchange, %{
+            actor: player_name(game, claimed_by_id),
+            detail: "revealed #{role_label(role)} and exchanged it for a new influence."
+          })
+        )
+
       {:ok,
        begin_reveal_phase(
          game,

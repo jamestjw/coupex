@@ -229,6 +229,35 @@ defmodule Coupex.GameTest do
     assert updated.winner_id == "p2"
   end
 
+  test "failed challenge logs replacement influence exchange" do
+    game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_action_responses,
+        pending: %{
+          actor_id: "p1",
+          actor_name: "Isolde",
+          action: "tax",
+          action_label: "Tax",
+          claim_role: :duke,
+          target_id: nil,
+          target_name: nil,
+          block_roles: [],
+          block_candidates: [],
+          cost: 0
+        },
+        eligible_ids: ["p2"],
+        passed_ids: MapSet.new()
+      })
+
+    assert {:ok, updated} = Game.challenge(game, "p2")
+
+    assert hd(updated.log).kind == :exchange
+
+    assert hd(updated.log).detail ==
+             "revealed Duke and exchanged it for a new influence."
+  end
+
   test "failed assassinate challenge with eliminated target advances without blocking" do
     game = %{
       status: :active,
