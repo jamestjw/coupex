@@ -297,7 +297,7 @@ defmodule CoupexWeb.RoomLive do
                           </button>
                         </div>
                       <% else %>
-                        <div :if={@all_actions != []} class="dock-actions-grid">
+                        <div :if={@all_actions != []} class="dock-actions-grid dock-actions-grid-2-row">
                           <%= for action <- @all_actions do %>
                             <button
                               type="button"

@@ -953,8 +953,15 @@ body::before {
   width: 100%;
 }
 
-.dock-actions-grid > .court-button.small {
-  width: 7.6rem;
+.dock-actions-grid-2-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.dock-actions-grid-2-row > .court-button.small {
+  width: 100%;
   flex-shrink: 0;
 }
 
