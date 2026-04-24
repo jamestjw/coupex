@@ -94,343 +94,382 @@ defmodule CoupexWeb.RoomLive do
 
   @impl true
   def render(assigns) do
+    assigns =
+      if assigns.snapshot.game do
+        assign(assigns, :opponents, Enum.reject(assigns.snapshot.game.players, & &1.you))
+      else
+        assigns
+      end
+
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="court-shell">
-        <div class="court-topbar">
-          <div class="brand-block">
-            <.link navigate={~p"/"} class="brand-link">
-              <span class="brand-mark"></span>
-              <span>Coup</span>
-              <span class="brand-sub">The Parlor</span>
-            </.link>
-          </div>
+      <%= if @snapshot.game do %>
+        <div class="court-stage-host">
+          <div class="court-shell">
+            <div class="court-topbar">
+              <div class="brand-block">
+                <.link navigate={~p"/"} class="brand-link">
+                  <span class="brand-mark"></span>
+                  <span>Coup</span>
+                  <span class="brand-sub">The Parlor</span>
+                </.link>
+              </div>
 
-          <div :if={@snapshot.game} class="court-stats">
-            <div><span>Treasury</span><strong>{@snapshot.game.treasury}</strong></div>
-            <div><span>Court Deck</span><strong>{@snapshot.game.deck_count}</strong></div>
-            <div><span>Round</span><strong>{@snapshot.game.round_number}</strong></div>
-            <div><span>Turn</span><strong>{@snapshot.game.turn_number}</strong></div>
-          </div>
+              <div class="court-stats">
+                <div><span>Treasury</span><strong>{@snapshot.game.treasury}</strong></div>
+                <div><span>Court Deck</span><strong>{@snapshot.game.deck_count}</strong></div>
+                <div><span>Round</span><strong>{@snapshot.game.round_number}</strong></div>
+                <div><span>Turn</span><strong>{@snapshot.game.turn_number}</strong></div>
+              </div>
 
-          <div class="room-pill">
-            <span class="live-dot"></span>
-            <span>Room {@snapshot.code}</span>
+              <div class="room-pill">
+                <span class="live-dot"></span>
+                <span>Room {@snapshot.code}</span>
+              </div>
+            </div>
+
+            <div class="court-app">
+              <section class="table-panel">
+                <div class="lobby-strip">
+                  <%= for player <- @snapshot.lobby_players do %>
+                    <div class={["lobby-chip", player.host && "host"]}>
+                      <span>{player.name}</span>
+                      <span :if={player.host}>Host</span>
+                    </div>
+                  <% end %>
+                </div>
+
+                <div class="table-stage">
+                  <div class="table-felt"></div>
+                  <div class="table-wordmark">Coup</div>
+
+                  <div class="center-pile">
+                    <div class="deck-stack">
+                      <div class="card-back"></div>
+                      <div class="card-back"></div>
+                      <div class="card-back"></div>
+                      <span>Court · {@snapshot.game.deck_count}</span>
+                    </div>
+
+                    <div class="treasury-stack">
+                      <div
+                        :for={coin <- 1..min(@snapshot.game.treasury, 8)}
+                        class="coin"
+                        style={"--coin-index: #{coin}"}
+                      >
+                      </div>
+                      <span>Treasury · {@snapshot.game.treasury}</span>
+                    </div>
+                  </div>
+
+                  <div class={seat_grid_class(length(@opponents))}>
+                    <%= for player <- @opponents do %>
+                      <article class={[
+                        "seat-card",
+                        player.id == @snapshot.game.active_player_id && "seat-active",
+                        player.eliminated && "seat-out"
+                      ]}>
+                        <div class="seat-head">
+                          <div>
+                            <p class="seat-name">{player.name}</p>
+                            <p class="seat-meta">
+                              {player.coins} coin{if player.coins != 1, do: "s"} · {player.alive_count} influence
+                            </p>
+                          </div>
+                          <div class="seat-avatar">{String.first(player.name)}</div>
+                        </div>
+
+                        <div class="seat-cards">
+                          <%= for influence <- player.influences do %>
+                            <div class={[
+                              "influence-card",
+                              influence.role && role_class(influence.role),
+                              influence.hidden && "hidden",
+                              influence.revealed && "revealed"
+                            ]}>
+                              <%= cond do %>
+                                <% influence.hidden -> %>
+                                  <span>?</span>
+                                <% influence.role -> %>
+                                  <span>{influence.role}</span>
+                                <% true -> %>
+                                  <span>Hidden</span>
+                              <% end %>
+                            </div>
+                          <% end %>
+                        </div>
+                      </article>
+                    <% end %>
+                  </div>
+                </div>
+
+                <section class="action-dock">
+                  <div class="dock-left">
+                    <div class="dock-summary">
+                      <p>Your hand</p>
+                      <strong>{@snapshot.game.you.name}</strong>
+                      <span>
+                        {@snapshot.game.you.coins} coin{if @snapshot.game.you.coins != 1, do: "s"} · {@snapshot.game.you.alive_count} influence
+                      </span>
+                    </div>
+
+                    <div class="dock-hand">
+                      <%= for {influence, index} <- Enum.with_index(@snapshot.game.you.influences) do %>
+                        <button
+                          type="button"
+                          id={"your-influence-#{index}"}
+                          class={[
+                            "hand-card",
+                            influence.role && role_class(influence.role),
+                            influence.revealed && "revealed"
+                          ]}
+                          phx-click="reveal"
+                          phx-value-index={index}
+                          disabled={
+                            @snapshot.game.interaction.kind != :reveal or
+                              not @snapshot.game.interaction.your_turn or influence.revealed
+                          }
+                        >
+                          <span class="hand-card-index">{role_index(influence.role)}</span>
+                          <span class="hand-card-art"></span>
+                          <span class="hand-card-name">{influence.role || "Hidden"}</span>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <div class="dock-center">
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :action and
+                          @snapshot.game.interaction.your_turn
+                      }
+                      class="dock-actions"
+                    >
+                      <%= for action <- @snapshot.game.you.available_actions do %>
+                        <%= if action.target do %>
+                          <form
+                            id={"action-form-#{action.id}"}
+                            class="targeted-action-form"
+                            phx-submit="take_action"
+                          >
+                            <input type="hidden" name="action" value={action.id} />
+                            <label>
+                              <span>{action.label}</span>
+                              <select name="target" class="court-select">
+                                <option value="">Target</option>
+                                <%= for target <- action.targets do %>
+                                  <option value={target.id}>{target.name}</option>
+                                <% end %>
+                              </select>
+                            </label>
+                            <button type="submit" class="court-button small">Play</button>
+                          </form>
+                        <% else %>
+                          <button
+                            type="button"
+                            class={["court-button", "small", action_class(action.id)]}
+                            phx-click="take_action"
+                            phx-value-action={action.id}
+                            phx-value-target=""
+                          >
+                            <span>{action.label}</span>
+                            <span class="action-tag">{action_tag(action.id)}</span>
+                          </button>
+                        <% end %>
+                      <% end %>
+                    </div>
+
+                    <div
+                      :if={@snapshot.game.interaction.kind == :respond_action}
+                      class="response-card"
+                    >
+                      <p>
+                        {@snapshot.game.interaction.pending.actor_name} claims {@snapshot.game.interaction.pending.claim_role}
+                      </p>
+                      <div class="response-actions">
+                        <button
+                          :if={@snapshot.game.interaction.can_challenge}
+                          type="button"
+                          class="court-button small"
+                          phx-click="challenge"
+                        >
+                          Challenge
+                        </button>
+                        <button
+                          :if={@snapshot.game.interaction.can_pass}
+                          type="button"
+                          class="court-button small"
+                          phx-click="pass"
+                        >
+                          Allow
+                        </button>
+                      </div>
+                    </div>
+
+                    <div :if={@snapshot.game.interaction.kind == :block} class="response-card">
+                      <p>Block {@snapshot.game.interaction.pending.action_label}?</p>
+                      <div class="response-actions">
+                        <button
+                          :for={
+                            {role, index} <- Enum.with_index(@snapshot.game.interaction.block_roles)
+                          }
+                          type="button"
+                          class="court-button small"
+                          phx-click="block"
+                          phx-value-role={Enum.at(@snapshot.game.interaction.block_role_ids, index)}
+                        >
+                          {role}
+                        </button>
+                        <button
+                          :if={@snapshot.game.interaction.can_pass}
+                          type="button"
+                          class="court-button small"
+                          phx-click="pass"
+                        >
+                          Pass
+                        </button>
+                      </div>
+                    </div>
+
+                    <div :if={@snapshot.game.interaction.kind == :respond_block} class="response-card">
+                      <p>
+                        {@snapshot.game.interaction.block.player_name} blocks as {@snapshot.game.interaction.block.role}
+                      </p>
+                      <div class="response-actions">
+                        <button
+                          :if={@snapshot.game.interaction.can_challenge}
+                          type="button"
+                          class="court-button small"
+                          phx-click="challenge"
+                        >
+                          Challenge Block
+                        </button>
+                        <button
+                          :if={@snapshot.game.interaction.can_pass}
+                          type="button"
+                          class="court-button small"
+                          phx-click="pass"
+                        >
+                          Let It Stand
+                        </button>
+                      </div>
+                    </div>
+
+                    <div :if={@snapshot.game.interaction.kind == :reveal} class="response-card">
+                      <p>{@snapshot.game.interaction.reason}</p>
+                    </div>
+
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :exchange and
+                          @snapshot.game.interaction.your_turn
+                      }
+                      class="exchange-card"
+                    >
+                      <p>Keep exactly {@snapshot.game.interaction.keep_count} cards.</p>
+                      <div class="exchange-options">
+                        <button
+                          :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.options)}
+                          type="button"
+                          class={["exchange-option", index in @exchange_selection && "selected"]}
+                          phx-click="toggle_exchange"
+                          phx-value-index={index}
+                        >
+                          {role}
+                        </button>
+                      </div>
+                      <button type="button" class="court-button small" phx-click="confirm_exchange">
+                        Confirm Exchange
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="turn-banner">
+                    <span>Turn {@snapshot.game.turn_number}</span>
+                    <strong>{@snapshot.game.active_player_name}</strong>
+                    <span>
+                      <%= if @snapshot.game.status == :finished do %>
+                        court concluded
+                      <% else %>
+                        in the spotlight
+                      <% end %>
+                    </span>
+                  </div>
+                </section>
+              </section>
+
+              <aside class="chronicle-panel">
+                <div class="chronicle-head">
+                  <div>
+                    <p>Chronicle</p>
+                    <span>Room {@snapshot.code}</span>
+                  </div>
+                </div>
+
+                <div class="chronicle-meta">
+                  <span>· {length(@snapshot.game.players)} players seated ·</span>
+                  <span>Round {@snapshot.game.round_number} ·</span>
+                </div>
+
+                <div class="chronicle-list" id="chronicle-list">
+                  <%= for entry <- @snapshot.game.log do %>
+                    <div class={["log-entry", Atom.to_string(entry.kind)]}>
+                      {render_log(entry)}
+                    </div>
+                  <% end %>
+                </div>
+
+                <div class="chronicle-foot">
+                  <span>{length(@snapshot.game.players)} seated</span>
+                  <span>·</span>
+                  <span>Turn {@snapshot.game.turn_number}</span>
+                </div>
+              </aside>
+            </div>
           </div>
         </div>
+      <% else %>
+        <section class="lobby-shell">
+          <div class="landing-card lobby-card">
+            <p class="landing-tag">Room {@snapshot.code}</p>
+            <h1 class="landing-title">Court Gathering<span>.</span></h1>
 
-        <%= if @snapshot.game do %>
-          <div class="court-app">
-            <section class="table-panel">
-              <div class="lobby-strip">
-                <%= for player <- @snapshot.lobby_players do %>
-                  <div class={["lobby-chip", player.host && "host"]}>
-                    <span>{player.name}</span>
-                    <span :if={player.host}>Host</span>
+            <div class="lobby-list">
+              <%= for player <- @snapshot.lobby_players do %>
+                <div class="lobby-row">
+                  <div>
+                    <strong>{player.name}</strong>
                   </div>
-                <% end %>
-              </div>
-
-              <div class="table-stage">
-                <div class="table-felt"></div>
-                <div class="table-wordmark">Coup</div>
-
-                <div class="center-pile">
-                  <div class="deck-stack">
-                    <div class="card-back"></div>
-                    <div class="card-back"></div>
-                    <div class="card-back"></div>
-                    <span>Court · {@snapshot.game.deck_count}</span>
-                  </div>
-
-                  <div class="treasury-stack">
-                    <div
-                      :for={coin <- 1..min(@snapshot.game.treasury, 8)}
-                      class="coin"
-                      style={"--coin-index: #{coin}"}
-                    >
-                    </div>
-                    <span>Treasury · {@snapshot.game.treasury}</span>
-                  </div>
+                  <span class="lobby-status">{lobby_status(player)}</span>
                 </div>
-
-                <div class={seat_grid_class(length(@snapshot.game.players))}>
-                  <%= for player <- @snapshot.game.players do %>
-                    <article class={[
-                      "seat-card",
-                      player.you && "seat-you",
-                      player.id == @snapshot.game.active_player_id && "seat-active",
-                      player.eliminated && "seat-out"
-                    ]}>
-                      <div class="seat-head">
-                        <div>
-                          <p class="seat-name">{player.name}</p>
-                          <p class="seat-meta">
-                            {player.coins} coin{if player.coins != 1, do: "s"} · {player.alive_count} influence
-                          </p>
-                        </div>
-                        <div class="seat-avatar">{String.first(player.name)}</div>
-                      </div>
-
-                      <div class="seat-cards">
-                        <%= for influence <- player.influences do %>
-                          <div class={[
-                            "influence-card",
-                            influence.hidden && "hidden",
-                            influence.revealed && "revealed"
-                          ]}>
-                            <%= cond do %>
-                              <% influence.hidden -> %>
-                                <span>?</span>
-                              <% influence.role -> %>
-                                <span>{influence.role}</span>
-                              <% true -> %>
-                                <span>Hidden</span>
-                            <% end %>
-                          </div>
-                        <% end %>
-                      </div>
-                    </article>
-                  <% end %>
-                </div>
-              </div>
-
-              <section class="action-dock">
-                <div class="dock-summary">
-                  <p>Your hand</p>
-                  <strong>{@snapshot.game.you.name}</strong>
-                </div>
-
-                <div class="dock-hand">
-                  <%= for {influence, index} <- Enum.with_index(@snapshot.game.you.influences) do %>
-                    <button
-                      type="button"
-                      id={"your-influence-#{index}"}
-                      class={["hand-card", influence.revealed && "revealed"]}
-                      phx-click="reveal"
-                      phx-value-index={index}
-                      disabled={
-                        @snapshot.game.interaction.kind != :reveal or
-                          not @snapshot.game.interaction.your_turn or influence.revealed
-                      }
-                    >
-                      <span>{influence.role || "Hidden"}</span>
-                    </button>
-                  <% end %>
-                </div>
-
-                <div
-                  :if={
-                    @snapshot.game.interaction.kind == :action and
-                      @snapshot.game.interaction.your_turn
-                  }
-                  class="dock-actions"
-                >
-                  <%= for action <- @snapshot.game.you.available_actions do %>
-                    <%= if action.target do %>
-                      <form
-                        id={"action-form-#{action.id}"}
-                        class="targeted-action-form"
-                        phx-submit="take_action"
-                      >
-                        <input type="hidden" name="action" value={action.id} />
-                        <label>
-                          <span>{action.label}</span>
-                          <select name="target" class="court-select">
-                            <option value="">Target</option>
-                            <%= for target <- action.targets do %>
-                              <option value={target.id}>{target.name}</option>
-                            <% end %>
-                          </select>
-                        </label>
-                        <button type="submit" class="court-button small">Play</button>
-                      </form>
-                    <% else %>
-                      <button
-                        type="button"
-                        class="court-button small"
-                        phx-click="take_action"
-                        phx-value-action={action.id}
-                        phx-value-target=""
-                      >
-                        {action.label}
-                      </button>
-                    <% end %>
-                  <% end %>
-                </div>
-
-                <div :if={@snapshot.game.interaction.kind == :respond_action} class="response-card">
-                  <p>
-                    {@snapshot.game.interaction.pending.actor_name} claims {@snapshot.game.interaction.pending.claim_role}
-                  </p>
-                  <div class="response-actions">
-                    <button
-                      :if={@snapshot.game.interaction.can_challenge}
-                      type="button"
-                      class="court-button small"
-                      phx-click="challenge"
-                    >
-                      Challenge
-                    </button>
-                    <button
-                      :if={@snapshot.game.interaction.can_pass}
-                      type="button"
-                      class="court-button small"
-                      phx-click="pass"
-                    >
-                      Allow
-                    </button>
-                  </div>
-                </div>
-
-                <div :if={@snapshot.game.interaction.kind == :block} class="response-card">
-                  <p>Block {@snapshot.game.interaction.pending.action_label}?</p>
-                  <div class="response-actions">
-                    <button
-                      :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.block_roles)}
-                      type="button"
-                      class="court-button small"
-                      phx-click="block"
-                      phx-value-role={Enum.at(@snapshot.game.interaction.block_role_ids, index)}
-                    >
-                      {role}
-                    </button>
-                    <button
-                      :if={@snapshot.game.interaction.can_pass}
-                      type="button"
-                      class="court-button small"
-                      phx-click="pass"
-                    >
-                      Pass
-                    </button>
-                  </div>
-                </div>
-
-                <div :if={@snapshot.game.interaction.kind == :respond_block} class="response-card">
-                  <p>
-                    {@snapshot.game.interaction.block.player_name} blocks as {@snapshot.game.interaction.block.role}
-                  </p>
-                  <div class="response-actions">
-                    <button
-                      :if={@snapshot.game.interaction.can_challenge}
-                      type="button"
-                      class="court-button small"
-                      phx-click="challenge"
-                    >
-                      Challenge Block
-                    </button>
-                    <button
-                      :if={@snapshot.game.interaction.can_pass}
-                      type="button"
-                      class="court-button small"
-                      phx-click="pass"
-                    >
-                      Let It Stand
-                    </button>
-                  </div>
-                </div>
-
-                <div :if={@snapshot.game.interaction.kind == :reveal} class="response-card">
-                  <p>{@snapshot.game.interaction.reason}</p>
-                </div>
-
-                <div
-                  :if={
-                    @snapshot.game.interaction.kind == :exchange and
-                      @snapshot.game.interaction.your_turn
-                  }
-                  class="exchange-card"
-                >
-                  <p>Keep exactly {@snapshot.game.interaction.keep_count} cards.</p>
-                  <div class="exchange-options">
-                    <button
-                      :for={{role, index} <- Enum.with_index(@snapshot.game.interaction.options)}
-                      type="button"
-                      class={["exchange-option", index in @exchange_selection && "selected"]}
-                      phx-click="toggle_exchange"
-                      phx-value-index={index}
-                    >
-                      {role}
-                    </button>
-                  </div>
-                  <button type="button" class="court-button small" phx-click="confirm_exchange">
-                    Confirm Exchange
-                  </button>
-                </div>
-
-                <div class="turn-banner">
-                  <span>Turn {@snapshot.game.turn_number}</span>
-                  <strong>{@snapshot.game.active_player_name}</strong>
-                  <span>
-                    <%= if @snapshot.game.status == :finished do %>
-                      court concluded
-                    <% else %>
-                      in the spotlight
-                    <% end %>
-                  </span>
-                </div>
-              </section>
-            </section>
-
-            <aside class="chronicle-panel">
-              <div class="chronicle-head">
-                <div>
-                  <p>Chronicle</p>
-                  <span>Room {@snapshot.code}</span>
-                </div>
-              </div>
-
-              <div class="chronicle-list" id="chronicle-list">
-                <%= for entry <- @snapshot.game.log do %>
-                  <div class={["log-entry", Atom.to_string(entry.kind)]}>
-                    {render_log(entry)}
-                  </div>
-                <% end %>
-              </div>
-            </aside>
-          </div>
-        <% else %>
-          <section class="lobby-shell">
-            <div class="landing-card lobby-card">
-              <p class="landing-tag">Room {@snapshot.code}</p>
-              <h1 class="landing-title">Court Gathering<span>.</span></h1>
-
-              <div class="lobby-list">
-                <%= for player <- @snapshot.lobby_players do %>
-                  <div class="lobby-row">
-                    <div>
-                      <strong>{player.name}</strong>
-                    </div>
-                    <span class="lobby-status">{lobby_status(player)}</span>
-                  </div>
-                <% end %>
-              </div>
-
-              <div :if={@lobby_error} class="landing-error lobby-error" id="lobby-error" role="alert">
-                {@lobby_error}
-              </div>
-
-              <div class="lobby-actions">
-                <button type="button" class="court-button" phx-click="toggle_ready">
-                  {if viewer_ready?(@snapshot), do: "Mark Unready", else: "Mark Ready"}
-                </button>
-                <button
-                  type="button"
-                  class="court-button court-button-dark"
-                  phx-click="start_game"
-                  disabled={not @snapshot.can_start or @snapshot.host_id != @snapshot.viewer_id}
-                >
-                  Start Game
-                </button>
-              </div>
-
-              <p class="landing-note">
-                Only the host can start the game once 2 to 6 players are seated.
-              </p>
+              <% end %>
             </div>
-          </section>
-        <% end %>
-      </div>
+
+            <div :if={@lobby_error} class="landing-error lobby-error" id="lobby-error" role="alert">
+              {@lobby_error}
+            </div>
+
+            <div class="lobby-actions">
+              <button type="button" class="court-button" phx-click="toggle_ready">
+                {if viewer_ready?(@snapshot), do: "Mark Unready", else: "Mark Ready"}
+              </button>
+              <button
+                type="button"
+                class="court-button court-button-dark"
+                phx-click="start_game"
+                disabled={not @snapshot.can_start or @snapshot.host_id != @snapshot.viewer_id}
+              >
+                Start Game
+              </button>
+            </div>
+
+            <p class="landing-note">
+              Only the host can start the game once 2 to 6 players are seated.
+            </p>
+          </div>
+        </section>
+      <% end %>
     </Layouts.app>
     """
   end
@@ -460,6 +499,34 @@ defmodule CoupexWeb.RoomLive do
   defp blank_to_nil(value), do: value
 
   defp seat_grid_class(count), do: "seat-grid seat-grid-#{count}"
+
+  defp role_class(nil), do: nil
+  defp role_class(role), do: "role-#{role |> String.downcase() |> String.replace(" ", "-")}"
+
+  defp role_index("Duke"), do: "I"
+  defp role_index("Assassin"), do: "II"
+  defp role_index("Captain"), do: "III"
+  defp role_index("Ambassador"), do: "IV"
+  defp role_index("Contessa"), do: "V"
+  defp role_index(_role), do: "?"
+
+  defp action_class("income"), do: "action-income"
+  defp action_class("foreign_aid"), do: "action-foreign-aid"
+  defp action_class("coup"), do: "action-coup"
+  defp action_class("tax"), do: "action-tax"
+  defp action_class("assassinate"), do: "action-assassinate"
+  defp action_class("steal"), do: "action-steal"
+  defp action_class("exchange"), do: "action-exchange"
+  defp action_class(_action), do: nil
+
+  defp action_tag("income"), do: "+1"
+  defp action_tag("foreign_aid"), do: "+2"
+  defp action_tag("coup"), do: "-7"
+  defp action_tag("tax"), do: "+3"
+  defp action_tag("assassinate"), do: "-3"
+  defp action_tag("steal"), do: "+2"
+  defp action_tag("exchange"), do: "<>"
+  defp action_tag(_action), do: ""
 
   defp render_log(entry) do
     case entry.kind do

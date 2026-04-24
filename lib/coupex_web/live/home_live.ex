@@ -30,7 +30,8 @@ defmodule CoupexWeb.HomeLive do
               {:noreply,
                push_navigate(socket, to: ~p"/rooms/#{code}?name=#{normalized_name(name)}")}
 
-            {:error, message} -> {:noreply, assign(socket, :form_error, message)}
+            {:error, message} ->
+              {:noreply, assign(socket, :form_error, message)}
           end
 
         "join" ->
@@ -40,7 +41,8 @@ defmodule CoupexWeb.HomeLive do
             {:noreply,
              push_navigate(
                socket,
-               to: ~p"/rooms/#{String.upcase(String.trim(room_code))}?name=#{normalized_name(name)}"
+               to:
+                 ~p"/rooms/#{String.upcase(String.trim(room_code))}?name=#{normalized_name(name)}"
              )}
           else
             {:error, message} -> {:noreply, assign(socket, :form_error, message)}
@@ -102,7 +104,12 @@ defmodule CoupexWeb.HomeLive do
               </div>
 
               <div class="landing-button-wrap">
-                <button type="submit" name="intent" value="create" class="court-button court-button-dark landing-primary-button">
+                <button
+                  type="submit"
+                  name="intent"
+                  value="create"
+                  class="court-button court-button-dark landing-primary-button"
+                >
                   Create Room
                 </button>
               </div>
@@ -120,7 +127,12 @@ defmodule CoupexWeb.HomeLive do
               </div>
 
               <div class="landing-button-wrap">
-                <button type="submit" name="intent" value="join" class="court-button landing-secondary-button">
+                <button
+                  type="submit"
+                  name="intent"
+                  value="join"
+                  class="court-button landing-secondary-button"
+                >
                   Join Room
                 </button>
               </div>
