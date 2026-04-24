@@ -347,6 +347,38 @@ defmodule CoupexWeb.RoomLive do
                     <div
                       :if={
                         @snapshot.game.interaction.kind == :respond_action and
+                          @snapshot.game.interaction.pending.actor_id == @viewer_id
+                      }
+                      id="claim-actor-waiting"
+                      class="response-card actor-block-waiting"
+                    >
+                      <p>
+                        <%= if @snapshot.game.interaction.waiting_on_name do %>
+                          Waiting for <strong>{@snapshot.game.interaction.waiting_on_name}</strong>
+                          to decide whether to challenge your
+                          <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.pending.claim_role}
+                          </span>
+                          claim.
+                        <% else %>
+                          Waiting for other players to decide whether to challenge your
+                          <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.pending.claim_role}
+                          </span>
+                          claim.
+                        <% end %>
+                      </p>
+                    </div>
+
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :respond_action and
                           @snapshot.game.interaction.pending.actor_id != @viewer_id and
                           @claim_response_key == claim_key(@snapshot.game) and
                           @snapshot.game.interaction.awaiting_others
@@ -396,6 +428,34 @@ defmodule CoupexWeb.RoomLive do
                       class="response-card claim-response-waiting"
                     >
                       <p>You passed on blocking. Waiting for the rest of the table.</p>
+                    </div>
+
+                    <div
+                      :if={
+                        @snapshot.game.interaction.kind == :respond_block and
+                          @snapshot.game.interaction.block.player_id == @viewer_id
+                      }
+                      id="block-actor-waiting"
+                      class="response-card actor-block-waiting"
+                    >
+                      <p>
+                        <%= if @snapshot.game.interaction.waiting_on_name do %>
+                          Waiting for <strong>{@snapshot.game.interaction.waiting_on_name}</strong>
+                          to decide whether to challenge your block as <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.block.role}
+                          </span>.
+                        <% else %>
+                          Waiting for other players to decide whether to challenge your block as <span class={[
+                            "waiting-action-chip",
+                            waiting_action_tone(@snapshot.game.interaction.pending.action)
+                          ]}>
+                            {@snapshot.game.interaction.block.role}
+                          </span>.
+                        <% end %>
+                      </p>
                     </div>
 
                     <div

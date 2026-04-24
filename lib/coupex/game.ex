@@ -394,6 +394,9 @@ defmodule Coupex.Game do
       } ->
         can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
 
+        pending_responder_ids =
+          Enum.reject(eligible_ids, fn player_id -> MapSet.member?(passed_ids, player_id) end)
+
         awaiting_others =
           viewer_id in eligible_ids and
             MapSet.member?(passed_ids, viewer_id) and
@@ -406,7 +409,12 @@ defmodule Coupex.Game do
           pending: public_pending(pending),
           can_challenge: can_respond,
           can_pass: can_respond,
-          awaiting_others: awaiting_others
+          awaiting_others: awaiting_others,
+          waiting_on_name:
+            case pending_responder_ids do
+              [single_player_id] -> player_name(game, single_player_id)
+              _ -> nil
+            end
         }
 
       %{
@@ -452,6 +460,9 @@ defmodule Coupex.Game do
       } ->
         can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
 
+        pending_responder_ids =
+          Enum.reject(eligible_ids, fn player_id -> MapSet.member?(passed_ids, player_id) end)
+
         awaiting_others =
           viewer_id in eligible_ids and
             MapSet.member?(passed_ids, viewer_id) and
@@ -469,7 +480,12 @@ defmodule Coupex.Game do
           },
           can_challenge: can_respond,
           can_pass: can_respond,
-          awaiting_others: awaiting_others
+          awaiting_others: awaiting_others,
+          waiting_on_name:
+            case pending_responder_ids do
+              [single_player_id] -> player_name(game, single_player_id)
+              _ -> nil
+            end
         }
 
       %{kind: :awaiting_reveal, player_id: player_id, reason: reason} ->

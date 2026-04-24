@@ -64,6 +64,8 @@ defmodule CoupexWeb.RoomLiveTest do
     assert has_element?(guest_view, "#claim-challenge-timer")
     assert has_element?(guest_view, "[data-claim-countdown]")
     refute has_element?(host_view, "#claim-challenge-modal")
+    assert has_element?(host_view, "#claim-actor-waiting")
+    assert has_element?(host_view, "#claim-actor-waiting .waiting-action-chip", "Duke")
   end
 
   test "two-player allow does not show waiting-for-others notice", %{conn: conn} do
