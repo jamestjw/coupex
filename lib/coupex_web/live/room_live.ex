@@ -218,7 +218,7 @@ defmodule CoupexWeb.RoomLive do
                         phx-value-target={player.id}
                       >
                         <div class="seat-avatar-wrap">
-                          <div class="seat-avatar">{String.first(player.name)}</div>
+                          <div class="seat-avatar">{avatar_initial(player.name)}</div>
                           <div class="seat-avatar-mark">{player.alive_count}</div>
                         </div>
 
@@ -329,7 +329,8 @@ defmodule CoupexWeb.RoomLive do
                                 "court-button",
                                 "small",
                                 "action-button",
-                                action_class(action.id)
+                                action_class(action.id),
+                                forced_coup_action_class(@snapshot.game.you.coins, action.id)
                               ]}
                               phx-click={if action.target, do: "select_action", else: "take_action"}
                               phx-value-action={action.id}
@@ -977,6 +978,15 @@ defmodule CoupexWeb.RoomLive do
   defp role_index("Contessa"), do: "V"
   defp role_index(_role), do: "?"
 
+  defp avatar_initial(name) when is_binary(name) do
+    case String.first(name) do
+      nil -> "?"
+      initial -> String.upcase(initial)
+    end
+  end
+
+  defp avatar_initial(_name), do: "?"
+
   defp revealed_influence_tooltip(%{revealed: true, role: role}) when is_binary(role),
     do: "Revealed: #{role}"
 
@@ -1007,6 +1017,14 @@ defmodule CoupexWeb.RoomLive do
   defp action_class("steal"), do: "action-steal"
   defp action_class("exchange"), do: "action-exchange"
   defp action_class(_action), do: nil
+
+  defp forced_coup_action_class(coins, "coup") when is_integer(coins) and coins >= 10,
+    do: "action-force-coup"
+
+  defp forced_coup_action_class(coins, _action) when is_integer(coins) and coins >= 10,
+    do: "action-force-muted"
+
+  defp forced_coup_action_class(_coins, _action), do: nil
 
   defp waiting_action_tone("foreign_aid"), do: "tone-foreign-aid"
   defp waiting_action_tone("assassinate"), do: "tone-assassinate"

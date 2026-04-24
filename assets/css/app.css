@@ -638,6 +638,7 @@ body::before {
   margin: 0.5rem 0 0;
   font-size: 0.92rem;
   font-family: "DM Serif Display", Georgia, serif;
+  font-weight: 600;
   line-height: 1;
   text-align: center;
 }
@@ -663,6 +664,7 @@ body::before {
   background: rgba(244, 237, 224, 0.9);
   font-family: "DM Serif Display", Georgia, serif;
   font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .seat-avatar-mark {
@@ -1550,11 +1552,25 @@ body::before {
 .action-exchange::before { background: var(--ambassador); }
 
 .action-coup {
-  opacity: 0.55;
+  border-color: rgba(164, 44, 44, 0.28);
 }
 
 .action-coup .action-tag {
   background: #d9a7a2;
+}
+
+.action-force-muted {
+  opacity: 0.22;
+}
+
+.action-force-coup {
+  background: linear-gradient(180deg, rgba(255, 244, 239, 0.95) 0%, rgba(255, 237, 232, 0.96) 100%);
+  border-color: rgba(164, 44, 44, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 0 0 1px rgba(164, 44, 44, 0.16);
+}
+
+.action-force-coup .action-tag {
+  background: #ba6a63;
 }
 
 .log-entry.win,
