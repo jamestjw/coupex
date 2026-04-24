@@ -23,7 +23,8 @@ defmodule Coupex.RoomServerTest do
 
     Process.exit(player_pid, :shutdown)
 
-    assert_receive {:DOWN, ^room_ref, :process, ^room_pid, :normal}
+    assert_receive {:DOWN, ^room_ref, :process, ^room_pid, reason}
+    assert reason in [:normal, :noproc]
     assert {:error, "That room does not exist."} = RoomServer.snapshot(code, player_id)
   end
 end

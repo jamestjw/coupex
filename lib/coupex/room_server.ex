@@ -28,12 +28,18 @@ defmodule Coupex.RoomServer do
     GenServer.start_link(__MODULE__, code, name: via(code))
   end
 
+  def create_room do
+    code = unique_code()
+
+    with {:ok, _room} <- DynamicSupervisor.start_child(Coupex.RoomSupervisor, {__MODULE__, code}) do
+      {:ok, code}
+    end
+  end
+
   def via(code), do: {:via, Registry, {Coupex.RoomRegistry, normalize_code(code)}}
 
   def create_room(player_id, name, pid) do
-    code = unique_code()
-
-    with {:ok, _room} <- DynamicSupervisor.start_child(Coupex.RoomSupervisor, {__MODULE__, code}),
+    with {:ok, code} <- create_room(),
          {:ok, _snapshot} <- join_room(code, player_id, name, pid) do
       {:ok, code}
     end

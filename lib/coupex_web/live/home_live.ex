@@ -25,7 +25,7 @@ defmodule CoupexWeb.HomeLive do
     with :ok <- validate_name(name) do
       case intent do
         "create" ->
-          case RoomServer.create_room(socket.assigns.visitor_id, name, self()) do
+          case RoomServer.create_room() do
             {:ok, code} ->
               {:noreply,
                push_navigate(socket, to: ~p"/rooms/#{code}?name=#{normalized_name(name)}")}
