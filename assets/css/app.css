@@ -2,6 +2,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/coupex_web";
+@import "./responsive.css";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
@@ -284,12 +285,12 @@ body::before {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 0.6rem;
+  padding: 0.35rem;
 }
 
 .court-shell {
-  width: min(1360px, calc(100vw - 1.2rem), calc((100vh - 1.2rem) * 1.511));
-  height: min(900px, calc(100vh - 1.2rem), calc((100vw - 1.2rem) / 1.511));
+  width: min(1540px, calc(100vw - 0.7rem), calc((100vh - 0.7rem) * 1.66));
+  height: min(940px, calc(100vh - 0.7rem), calc((100vw - 0.7rem) / 1.44));
   margin: 0 auto;
   padding: 0;
   border: 1px solid rgba(26, 23, 20, 0.55);
@@ -364,7 +365,7 @@ body::before {
 
 .court-app {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 19rem;
+  grid-template-columns: minmax(0, 1fr) 22.5rem;
   height: calc(100% - 4rem);
 }
 
@@ -1457,7 +1458,7 @@ body::before {
 
 .chronicle-head,
 .chronicle-list {
-  padding: 0.9rem 1.1rem;
+  padding: 0.9rem 1.25rem;
 }
 
 .chronicle-foot {
@@ -1465,16 +1466,13 @@ body::before {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.62rem 1.1rem;
+  border-top: 1px solid rgba(26, 23, 20, 0.18);
   border-bottom: 1px solid rgba(26, 23, 20, 0.18);
   font-family: "JetBrains Mono", monospace;
   font-size: 0.56rem;
   letter-spacing: 0.19em;
   text-transform: uppercase;
   color: var(--ink-soft);
-}
-
-.chronicle-foot {
-  border-top: 1px solid rgba(26, 23, 20, 0.18);
   border-bottom: 0;
 }
 
@@ -1486,12 +1484,12 @@ body::before {
 }
 
 .log-entry {
-  padding: 0.62rem 1.1rem;
+  padding: 0.56rem 1.25rem;
   border-bottom: 1px solid rgba(26, 23, 20, 0.06);
   font-family: "Newsreader", Georgia, serif;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--ink);
-  line-height: 1.45;
+  line-height: 1.36;
   animation: log-in 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -1544,9 +1542,9 @@ body::before {
 
 .role-tag {
   margin-left: 0.26rem;
-  padding: 0.08rem 0.36rem;
+  padding: 0.06rem 0.32rem;
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.51rem;
+  font-size: 0.47rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--paper);
@@ -1717,273 +1715,4 @@ body::before {
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-@media (max-width: 1100px) {
-  .court-stage-host {
-    padding: 0;
-    place-items: stretch;
-  }
-
-  .court-shell {
-    width: 100vw;
-    height: 100vh;
-    border-left: 0;
-    border-right: 0;
-  }
-
-  .court-app {
-    grid-template-columns: 1fr;
-    height: auto;
-    min-height: calc(100vh - 4rem);
-  }
-
-  .chronicle-panel {
-    border-top: 1px solid var(--rule);
-  }
-
-  .action-dock {
-    grid-template-columns: 1fr;
-    justify-items: start;
-    gap: 1rem;
-  }
-
-  .dock-left {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-
-  .dock-center,
-  .turn-banner {
-    align-items: flex-start;
-    text-align: left;
-  }
-
-  .dock-actions,
-  .dock-actions-row,
-  .dock-actions-footer {
-    align-items: flex-start;
-    justify-content: flex-start;
-  }
-
-  .table-stage {
-    min-height: 34rem;
-  }
-
-  .table-felt {
-    top: 4.6rem;
-    width: min(88%, 760px);
-  }
-
-  .seat-grid-4 > :nth-child(2) {
-    left: 18%;
-  }
-
-  .seat-grid-4 > :nth-child(3) {
-    right: 18%;
-  }
-
-  .seat-grid-5 > :nth-child(2) {
-    left: 12%;
-  }
-
-  .seat-grid-5 > :nth-child(4) {
-    right: 12%;
-  }
-}
-
-@media (max-width: 720px) {
-  .landing-shell,
-  .lobby-shell {
-    padding: 1rem;
-  }
-
-  .court-shell {
-    margin: 0;
-    border-left: 0;
-    border-right: 0;
-    height: auto;
-    min-height: 100vh;
-  }
-
-  .court-app {
-    min-height: auto;
-  }
-
-  .court-topbar,
-  .landing-grid,
-  .landing-room-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .landing-button-wrap,
-  .landing-primary-button,
-  .landing-secondary-button {
-    align-items: stretch;
-  }
-
-  .landing-primary-button,
-  .landing-secondary-button {
-    width: 100%;
-  }
-
-  .court-stats {
-    width: 100%;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .table-stage {
-    min-height: 29rem;
-    padding: 1rem 0.75rem 1.25rem;
-  }
-
-  .drama-overlay {
-    padding: 0.75rem;
-  }
-
-  .drama-sheet {
-    padding: 1.55rem 1.25rem;
-  }
-
-  .drama-body {
-    font-size: 1rem;
-  }
-
-  .exchange-sheet {
-    width: min(100%, 32rem);
-  }
-
-  .exchange-grid {
-    grid-template-columns: repeat(2, minmax(5rem, 5rem));
-    justify-content: center;
-    gap: 0.6rem;
-  }
-
-  .court-influence-card-exchange {
-    width: 5rem;
-    min-width: 5rem;
-    min-height: 6.8rem;
-  }
-
-  .court-influence-card-exchange .hand-card-art {
-    min-height: 4.2rem;
-  }
-
-  .court-influence-card-exchange .hand-card-name {
-    font-size: 0.72rem;
-  }
-
-  .exchange-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .exchange-footer .court-button {
-    width: 100%;
-  }
-
-  .table-felt {
-    top: 6.75rem;
-    width: min(96%, 540px);
-  }
-
-  .seat-card {
-    width: 10.5rem;
-    padding: 0.85rem 0.8rem;
-  }
-
-  .seat-name {
-    font-size: 1.05rem;
-  }
-
-  .seat-avatar {
-    width: 2rem;
-    height: 2rem;
-  }
-
-  .seat-grid-2 > :nth-child(1),
-  .seat-grid-3 > :nth-child(1),
-  .seat-grid-4 > :nth-child(1),
-  .seat-grid-5 > :nth-child(1) {
-    left: 0;
-  }
-
-  .seat-grid-2 > :nth-child(2),
-  .seat-grid-3 > :nth-child(3),
-  .seat-grid-4 > :nth-child(4),
-  .seat-grid-5 > :nth-child(5) {
-    right: 0;
-  }
-
-  .seat-grid-3 > :nth-child(2),
-  .seat-grid-5 > :nth-child(3) {
-    top: 4.4rem;
-  }
-
-  .seat-grid-4 > :nth-child(2),
-  .seat-grid-4 > :nth-child(3),
-  .seat-grid-5 > :nth-child(2),
-  .seat-grid-5 > :nth-child(4) {
-    top: 7rem;
-  }
-
-  .seat-grid-4 > :nth-child(2) {
-    left: 10%;
-  }
-
-  .seat-grid-4 > :nth-child(3) {
-    right: 10%;
-  }
-
-  .seat-grid-5 > :nth-child(2) {
-    left: 7%;
-  }
-
-  .seat-grid-5 > :nth-child(4) {
-    right: 7%;
-  }
-
-  .seat-grid-4 > :nth-child(1),
-  .seat-grid-4 > :nth-child(4),
-  .seat-grid-5 > :nth-child(1),
-  .seat-grid-5 > :nth-child(5) {
-    top: 15rem;
-  }
-
-  .dock-hand,
-  .dock-actions,
-  .response-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .dock-left {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .hand-card {
-    width: 4.4rem;
-    min-width: 4.4rem;
-    min-height: 6.4rem;
-  }
-
-.targeted-action-form {
-  width: min(100%, 22rem);
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.35rem 0.55rem 0.45rem;
-  border: 1px solid rgba(26, 23, 20, 0.18);
-  background: rgba(255, 250, 241, 0.62);
-  transition: opacity 0.2s ease;
-}
-
-.targeted-action-form:has(button:disabled) {
-  opacity: 0.35;
-  pointer-events: none;
-}
 }
