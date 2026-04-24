@@ -27,4 +27,23 @@ defmodule Coupex.RoomServerTest do
     assert reason in [:normal, :noproc]
     assert {:error, "That room does not exist."} = RoomServer.snapshot(code, player_id)
   end
+
+  test "player can rejoin in-progress game after reconnect" do
+    host_id = "host-player"
+    guest_id = "guest-player"
+    guest_pid = start_supervised!({Task, fn -> Process.sleep(:infinity) end})
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_id, "Guest", guest_pid)
+
+    assert {:ok, _snapshot} = RoomServer.toggle_ready(code, host_id)
+    assert {:ok, _snapshot} = RoomServer.toggle_ready(code, guest_id)
+    assert {:ok, _snapshot} = RoomServer.start_game(code, host_id)
+
+    Process.exit(guest_pid, :shutdown)
+    _ = :sys.get_state(GenServer.whereis(RoomServer.via(code)))
+
+    assert {:ok, snapshot} = RoomServer.join_room(code, guest_id, "Guest", self())
+    assert snapshot.game.status == :active
+  end
 end

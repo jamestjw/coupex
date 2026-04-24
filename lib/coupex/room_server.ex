@@ -171,7 +171,7 @@ defmodule Coupex.RoomServer do
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     next_state =
       case Enum.find(state.players, fn {_player_id, player} -> player.monitor_ref == ref end) do
-        {player_id, _player} -> remove_player(state, player_id)
+        {player_id, _player} -> handle_player_disconnect(state, player_id)
         nil -> state
       end
 
@@ -228,9 +228,25 @@ defmodule Coupex.RoomServer do
     %{state | players: players, order: order, host_id: host_id}
   end
 
+  defp handle_player_disconnect(%{game: nil} = state, player_id),
+    do: remove_player(state, player_id)
+
+  defp handle_player_disconnect(state, player_id) do
+    case Map.fetch(state.players, player_id) do
+      {:ok, player} ->
+        put_in(state.players[player_id], %{player | monitor_ref: nil, pid: nil})
+
+      :error ->
+        state
+    end
+  end
+
   defp upsert_player(state, player_id, name, pid) do
     ref = Process.monitor(pid)
     existing = Map.get(state.players, player_id)
+
+    if existing && is_reference(existing.monitor_ref),
+      do: Process.demonitor(existing.monitor_ref, [:flush])
 
     player = %{
       id: player_id,
