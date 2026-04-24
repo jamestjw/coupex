@@ -299,6 +299,61 @@ defmodule Coupex.GameTest do
     assert updated.turn_number == 2
   end
 
+  test "failed challenge against a truthful block makes challenger reveal and block stands" do
+    game =
+      base_three_player_game(
+        %{},
+        %{influences: [%{role: :captain, revealed: false}, %{role: :contessa, revealed: false}]},
+        %{}
+      )
+
+    assert {:ok, game} = Game.declare_action(game, "p1", "steal", "p2")
+    assert {:ok, game} = Game.pass(game, "p2")
+    assert {:ok, game} = Game.pass(game, "p3")
+    assert {:ok, game} = Game.block(game, "p2", :captain)
+    assert {:ok, game} = Game.challenge(game, "p3")
+
+    assert game.phase.kind == :awaiting_reveal
+    assert game.phase.player_id == "p3"
+
+    assert {:ok, updated} = Game.reveal_influence(game, "p3", 0)
+
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p2"
+    assert updated.turn_number == 2
+
+    assert Enum.any?(updated.log, fn entry ->
+             entry.kind == :exchange and
+               entry.detail == "revealed Captain and exchanged it for a new influence."
+           end)
+  end
+
+  test "successful challenge against a bluff block resumes and resolves original action" do
+    game =
+      base_three_player_game(
+        %{},
+        %{influences: [%{role: :assassin, revealed: false}, %{role: :contessa, revealed: false}]},
+        %{}
+      )
+
+    assert {:ok, game} = Game.declare_action(game, "p1", "foreign_aid")
+    assert {:ok, game} = Game.block(game, "p2", :duke)
+    assert {:ok, game} = Game.challenge(game, "p3")
+
+    assert game.phase.kind == :awaiting_reveal
+    assert game.phase.player_id == "p2"
+
+    assert {:ok, updated} = Game.reveal_influence(game, "p2", 0)
+
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p2"
+    assert updated.turn_number == 2
+    assert Enum.find(updated.players, &(&1.id == "p1")).coins == 4
+    assert hd(updated.log).kind == :action
+    assert hd(updated.log).verb == "unopposed"
+    assert hd(updated.log).detail == "Foreign Aid stands"
+  end
+
   defp base_game(player_one_overrides, player_two_overrides) do
     %{
       status: :active,
@@ -328,6 +383,49 @@ defmodule Coupex.GameTest do
             influences: [%{role: :assassin, revealed: false}, %{role: :contessa, revealed: false}]
           },
           player_two_overrides
+        )
+      ]
+    }
+  end
+
+  defp base_three_player_game(player_one_overrides, player_two_overrides, player_three_overrides) do
+    %{
+      status: :active,
+      active_player_id: "p1",
+      turn_number: 1,
+      round_number: 1,
+      treasury: 44,
+      deck: [:duke, :captain, :ambassador, :contessa, :assassin, :duke],
+      winner_id: nil,
+      phase: %{kind: :awaiting_action},
+      log: [],
+      players: [
+        Map.merge(
+          %{
+            id: "p1",
+            name: "Isolde",
+            coins: 2,
+            influences: [%{role: :duke, revealed: false}, %{role: :captain, revealed: false}]
+          },
+          player_one_overrides
+        ),
+        Map.merge(
+          %{
+            id: "p2",
+            name: "Magnus",
+            coins: 2,
+            influences: [%{role: :assassin, revealed: false}, %{role: :contessa, revealed: false}]
+          },
+          player_two_overrides
+        ),
+        Map.merge(
+          %{
+            id: "p3",
+            name: "Rhea",
+            coins: 2,
+            influences: [%{role: :ambassador, revealed: false}, %{role: :captain, revealed: false}]
+          },
+          player_three_overrides
         )
       ]
     }
