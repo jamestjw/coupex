@@ -310,6 +310,6 @@ defmodule Coupex.RoomServer do
   end
 
   defp choose_name(nil, nil), do: "Player"
-  defp choose_name(nil, existing), do: existing.name
-  defp choose_name(name, _existing), do: name
+  defp choose_name(name, nil), do: name
+  defp choose_name(_name, existing), do: existing.name
 end
