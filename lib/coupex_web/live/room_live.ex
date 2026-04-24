@@ -17,6 +17,7 @@ defmodule CoupexWeb.RoomLive do
          |> assign(:page_title, "Room #{snapshot.code}")
          |> assign(:viewer_id, viewer_id)
          |> assign(:snapshot, snapshot)
+         |> assign(:lobby_error, nil)
          |> assign(:exchange_selection, [])
          |> assign(:current_scope, nil)}
 
@@ -32,7 +33,7 @@ defmodule CoupexWeb.RoomLive do
   def handle_info({:room_updated, code}, socket) do
     case RoomServer.snapshot(code, socket.assigns.viewer_id) do
       {:ok, snapshot} ->
-        {:noreply, assign(socket, :snapshot, snapshot)}
+        {:noreply, socket |> assign(:snapshot, snapshot) |> assign(:lobby_error, nil)}
 
       {:error, message} ->
         {:noreply, socket |> put_flash(:error, message) |> push_navigate(to: ~p"/")}
@@ -406,6 +407,10 @@ defmodule CoupexWeb.RoomLive do
                 <% end %>
               </div>
 
+              <div :if={@lobby_error} class="landing-error lobby-error" id="lobby-error" role="alert">
+                {@lobby_error}
+              </div>
+
               <div class="lobby-actions">
                 <button type="button" class="court-button" phx-click="toggle_ready">
                   {if viewer_ready?(@snapshot), do: "Mark Unready", else: "Mark Ready"}
@@ -435,8 +440,19 @@ defmodule CoupexWeb.RoomLive do
     state = %{code: socket.assigns.snapshot.code, viewer_id: socket.assigns.viewer_id}
 
     case fun.(state) do
-      {:ok, snapshot} -> {:noreply, socket |> assign(:snapshot, snapshot) |> after_success.()}
-      {:error, message} -> {:noreply, put_flash(socket, :error, message)}
+      {:ok, snapshot} ->
+        {:noreply,
+         socket
+         |> assign(:snapshot, snapshot)
+         |> assign(:lobby_error, nil)
+         |> after_success.()}
+
+      {:error, message} ->
+        if socket.assigns.snapshot.game do
+          {:noreply, put_flash(socket, :error, message)}
+        else
+          {:noreply, assign(socket, :lobby_error, message)}
+        end
     end
   end
 

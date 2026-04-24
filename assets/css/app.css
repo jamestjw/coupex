@@ -105,6 +105,12 @@ body::before {
   line-height: 1.4;
 }
 
+.lobby-error {
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
+  max-width: none;
+}
+
 .landing-form,
 .landing-grid,
 .landing-room-row,

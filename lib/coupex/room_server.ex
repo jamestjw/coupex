@@ -100,6 +100,7 @@ defmodule Coupex.RoomServer do
     with :ok <- ensure_host(state, player_id),
          :ok <- ensure_waiting(state),
          :ok <- ensure_player_count(state),
+         :ok <- ensure_all_ready(state),
          {:ok, game} <- Game.new(starting_players(state)) do
       next_state = %{state | game: game, players: reset_ready(state.players)}
       broadcast(next_state)
@@ -239,6 +240,14 @@ defmodule Coupex.RoomServer do
 
   defp ensure_player_count(state) do
     if length(state.order) in 2..6, do: :ok, else: {:error, "Coup requires 2 to 6 players."}
+  end
+
+  defp ensure_all_ready(state) do
+    if Enum.all?(state.players, fn {_id, player} -> player.ready end) do
+      :ok
+    else
+      {:error, "Every seated player must be ready before the game can begin."}
+    end
   end
 
   defp ensure_waiting(state) do
