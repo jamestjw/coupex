@@ -426,4 +426,52 @@ defmodule CoupexWeb.RoomLiveTest do
 
     {code, host_view, guest_view}
   end
+
+  test "finished game shows rematch controls and host can restart", %{conn: conn} do
+    host_id = "host-player"
+    guest_id = "guest-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_id, "Guest", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    {:ok, guest_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_id)
+      |> live(~p"/rooms/#{code}?name=Guest")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    mark_finished!(code)
+    assert {:ok, _snapshot} = RoomServer.snapshot(code, host_id)
+
+    assert has_element?(host_view, "#rematch-panel")
+    assert has_element?(host_view, "#rematch-restart-button[disabled]")
+    assert has_element?(guest_view, "#rematch-ready-button")
+
+    guest_view |> element("#rematch-ready-button") |> render_click()
+    refute has_element?(host_view, "#rematch-restart-button[disabled]")
+
+    host_view |> element("#rematch-restart-button") |> render_click()
+
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
+    assert snapshot.game.status == :active
+    refute has_element?(host_view, "#rematch-panel")
+  end
+
+  defp mark_finished!(code) do
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    :sys.replace_state(room_pid, fn state ->
+      %{state | game: %{state.game | status: :finished}}
+    end)
+
+    Phoenix.PubSub.broadcast(Coupex.PubSub, "room:#{String.upcase(code)}", {:room_updated, code})
+  end
 end

@@ -1430,6 +1430,57 @@ body::before {
   color: var(--ink-soft);
 }
 
+.rematch-panel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.rematch-title {
+  margin: 0;
+  font-family: "DM Serif Display", Georgia, serif;
+  font-size: 1.2rem;
+}
+
+.rematch-copy {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.rematch-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.rematch-chip {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 0.45rem;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid rgba(26, 23, 20, 0.24);
+  background: rgba(255, 250, 241, 0.7);
+  font-size: 0.95rem;
+}
+
+.rematch-chip > span {
+  display: block;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.rematch-actions {
+  display: flex;
+  gap: 0.55rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .actor-block-waiting {
   background: rgba(255, 250, 241, 0.9);
 }

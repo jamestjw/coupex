@@ -59,6 +59,12 @@ defmodule CoupexWeb.RoomLive do
   def handle_event("start_game", _, socket),
     do: room_action(socket, fn s -> RoomServer.start_game(s.code, s.viewer_id) end)
 
+  def handle_event("toggle_rematch_ready", _, socket),
+    do: room_action(socket, fn s -> RoomServer.toggle_rematch_ready(s.code, s.viewer_id) end)
+
+  def handle_event("restart_game", _, socket),
+    do: room_action(socket, fn s -> RoomServer.restart_game(s.code, s.viewer_id) end)
+
   def handle_event("pass", _, socket) do
     response_key =
       if socket.assigns.snapshot.game.interaction.kind in [
@@ -501,6 +507,58 @@ defmodule CoupexWeb.RoomLive do
                           Waiting for {@snapshot.game.interaction.player_name} to reveal one influence.
                         <% end %>
                       </p>
+                    </div>
+
+                    <div
+                      :if={@snapshot.game.status == :finished and @snapshot.rematch}
+                      id="rematch-panel"
+                      class="response-card rematch-panel"
+                    >
+                      <p class="rematch-title">Rematch</p>
+                      <%= cond do %>
+                        <% not @snapshot.rematch.min_players_met -> %>
+                          <p class="rematch-copy">Need at least 2 connected players for a rematch.</p>
+                        <% @snapshot.rematch.pending_names != [] -> %>
+                          <p class="rematch-copy">
+                            Waiting on {Enum.join(@snapshot.rematch.pending_names, ", ")} to ready up.
+                          </p>
+                        <% true -> %>
+                          <p class="rematch-copy">All players are ready.</p>
+                      <% end %>
+                      <div class="rematch-list">
+                        <%= for player <- @snapshot.rematch.connected_players do %>
+                          <span class="rematch-chip">
+                            {player.name}
+                            <span>{if player.ready, do: "Ready", else: "Waiting"}</span>
+                          </span>
+                        <% end %>
+                      </div>
+                      <div class="rematch-actions">
+                        <button
+                          :if={
+                            @viewer_id != @snapshot.rematch.host_id and
+                              viewer_in_rematch?(@snapshot)
+                          }
+                          id="rematch-ready-button"
+                          type="button"
+                          class="court-button small"
+                          phx-click="toggle_rematch_ready"
+                        >
+                          {if viewer_rematch_ready?(@snapshot),
+                            do: "Mark Unready",
+                            else: "Ready for Rematch"}
+                        </button>
+                        <button
+                          :if={@viewer_id == @snapshot.rematch.host_id}
+                          id="rematch-restart-button"
+                          type="button"
+                          class="court-button small court-button-dark"
+                          phx-click="restart_game"
+                          disabled={not @snapshot.rematch.can_restart}
+                        >
+                          Restart Game
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1188,6 +1246,17 @@ defmodule CoupexWeb.RoomLive do
 
   defp viewer_ready?(snapshot) do
     snapshot.lobby_players
+    |> Enum.find(&(&1.id == snapshot.viewer_id))
+    |> then(&(&1 && &1.ready))
+  end
+
+  defp viewer_in_rematch?(snapshot) do
+    snapshot.rematch &&
+      Enum.any?(snapshot.rematch.connected_players, &(&1.id == snapshot.viewer_id))
+  end
+
+  defp viewer_rematch_ready?(snapshot) do
+    snapshot.rematch.connected_players
     |> Enum.find(&(&1.id == snapshot.viewer_id))
     |> then(&(&1 && &1.ready))
   end

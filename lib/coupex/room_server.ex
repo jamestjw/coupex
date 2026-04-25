@@ -60,6 +60,11 @@ defmodule Coupex.RoomServer do
   def toggle_ready(code, player_id), do: GenServer.call(via(code), {:toggle_ready, player_id})
   def start_game(code, player_id), do: GenServer.call(via(code), {:start_game, player_id})
 
+  def toggle_rematch_ready(code, player_id),
+    do: GenServer.call(via(code), {:toggle_rematch_ready, player_id})
+
+  def restart_game(code, player_id), do: GenServer.call(via(code), {:restart_game, player_id})
+
   def take_action(code, player_id, action_id, target_id),
     do: GenServer.call(via(code), {:take_action, player_id, action_id, target_id})
 
@@ -126,6 +131,42 @@ defmodule Coupex.RoomServer do
          :ok <- ensure_all_ready(state),
          {:ok, game} <- Game.new(starting_players(state)) do
       next_state = %{state | game: game, players: reset_ready(state.players)}
+      broadcast(next_state)
+      {:reply, {:ok, view(next_state, player_id)}, next_state}
+    else
+      {:error, message} -> {:reply, {:error, message}, state}
+    end
+  end
+
+  def handle_call({:toggle_rematch_ready, player_id}, _from, state) do
+    with {:ok, player} <- fetch_room_player(state, player_id),
+         :ok <- ensure_finished(state),
+         :ok <- ensure_connected_player(player),
+         :ok <- ensure_not_rematch_host(state, player_id) do
+      updated = %{player | ready: not player.ready}
+      next_state = put_in(state.players[player_id], updated)
+      broadcast(next_state)
+      {:reply, {:ok, view(next_state, player_id)}, next_state}
+    else
+      {:error, message} -> {:reply, {:error, message}, state}
+    end
+  end
+
+  def handle_call({:restart_game, player_id}, _from, state) do
+    rematch_host_id = rematch_host_id(state)
+
+    with :ok <- ensure_finished(state),
+         :ok <- ensure_rematch_host(rematch_host_id, player_id),
+         {:ok, connected_ids} <- ensure_connected_player_count(state),
+         :ok <- ensure_connected_rematch_ready(state, rematch_host_id, connected_ids),
+         {:ok, game} <- Game.new(starting_players(state, connected_ids)) do
+      next_state =
+        state
+        |> prune_to_players(connected_ids)
+        |> Map.put(:host_id, rematch_host_id)
+        |> Map.put(:game, game)
+        |> Map.update!(:players, &reset_ready/1)
+
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -216,7 +257,8 @@ defmodule Coupex.RoomServer do
       player_count: length(players),
       can_start: length(players) in 2..6,
       lobby_players: players,
-      game: state.game && Game.view(state.game, viewer_id)
+      game: state.game && Game.view(state.game, viewer_id),
+      rematch: rematch_view(state)
     }
   end
 
@@ -263,8 +305,10 @@ defmodule Coupex.RoomServer do
     {players, order, host_id}
   end
 
-  defp starting_players(state) do
-    Enum.map(state.order, fn player_id ->
+  defp starting_players(state, player_ids \\ nil) do
+    ids = player_ids || state.order
+
+    Enum.map(ids, fn player_id ->
       player = Map.fetch!(state.players, player_id)
       %{id: player.id, name: player.name}
     end)
@@ -300,6 +344,111 @@ defmodule Coupex.RoomServer do
   defp ensure_waiting(state) do
     if is_nil(state.game), do: :ok, else: {:error, "The game is already underway."}
   end
+
+  defp ensure_finished(%{game: %{status: :finished}}), do: :ok
+  defp ensure_finished(%{game: nil}), do: {:error, "The game has not started yet."}
+  defp ensure_finished(_state), do: {:error, "The game is still in progress."}
+
+  defp ensure_connected_player(%{pid: pid}) when is_pid(pid), do: :ok
+  defp ensure_connected_player(_player), do: {:error, "Reconnect before joining a rematch."}
+
+  defp ensure_not_rematch_host(state, player_id) do
+    if rematch_host_id(state) == player_id,
+      do: {:error, "Host readiness is implied for rematches."},
+      else: :ok
+  end
+
+  defp ensure_rematch_host(nil, _player_id),
+    do: {:error, "Not enough connected players to restart."}
+
+  defp ensure_rematch_host(rematch_host_id, player_id) do
+    if rematch_host_id == player_id,
+      do: :ok,
+      else: {:error, "Only the rematch host can restart the game."}
+  end
+
+  defp ensure_connected_player_count(state) do
+    connected_ids = connected_player_ids(state)
+
+    if length(connected_ids) in 2..6,
+      do: {:ok, connected_ids},
+      else: {:error, "At least 2 connected players are required for a rematch."}
+  end
+
+  defp ensure_connected_rematch_ready(state, rematch_host_id, connected_ids) do
+    pending_ids =
+      Enum.reject(connected_ids, fn player_id ->
+        player_id == rematch_host_id or Map.fetch!(state.players, player_id).ready
+      end)
+
+    if pending_ids == [],
+      do: :ok,
+      else: {:error, "All connected players must be ready before restarting."}
+  end
+
+  defp connected_player_ids(state) do
+    Enum.filter(state.order, fn player_id ->
+      state.players
+      |> Map.fetch!(player_id)
+      |> connected_player?()
+    end)
+  end
+
+  defp connected_player?(%{pid: pid}) when is_pid(pid), do: true
+  defp connected_player?(_player), do: false
+
+  defp rematch_host_id(state) do
+    connected_ids = connected_player_ids(state)
+
+    cond do
+      connected_ids == [] -> nil
+      state.host_id in connected_ids -> state.host_id
+      true -> List.first(connected_ids)
+    end
+  end
+
+  defp prune_to_players(state, player_ids) do
+    players = Map.take(state.players, player_ids)
+    host_id = if state.host_id in player_ids, do: state.host_id, else: List.first(player_ids)
+
+    %{state | players: players, order: player_ids, host_id: host_id}
+  end
+
+  defp rematch_view(%{game: %{status: :finished}} = state) do
+    connected_ids = connected_player_ids(state)
+    host_id = rematch_host_id(state)
+
+    players =
+      Enum.map(connected_ids, fn player_id ->
+        player = Map.fetch!(state.players, player_id)
+
+        %{
+          id: player.id,
+          name: player.name,
+          ready: player_id == host_id or player.ready,
+          host: player_id == host_id
+        }
+      end)
+
+    pending_names =
+      players
+      |> Enum.reject(&(&1.host or &1.ready))
+      |> Enum.map(& &1.name)
+
+    connected_count = length(connected_ids)
+
+    %{
+      host_id: host_id,
+      connected_players: players,
+      connected_count: connected_count,
+      min_players_met: connected_count >= 2,
+      max_players_met: connected_count <= 6,
+      can_restart: pending_names == [] and connected_count in 2..6,
+      pending_names: pending_names
+    }
+  end
+
+  defp rematch_view(_state), do: nil
 
   defp parse_block_role(role_id) when is_binary(role_id) do
     role_id
