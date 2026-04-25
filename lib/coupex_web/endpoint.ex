@@ -11,9 +11,11 @@ defmodule CoupexWeb.Endpoint do
                        signing_salt: "GfRYcBQd",
                        same_site: "Lax"
                      ],
-                     :coupex
-                     |> Application.compile_env(CoupexWeb.Endpoint, [])
-                     |> Keyword.get(:session_opts, [])
+                     Application.compile_env(
+                       :coupex,
+                       [CoupexWeb.Endpoint, :session_opts],
+                       []
+                     )
                    )
 
   socket "/live", Phoenix.LiveView.Socket,
