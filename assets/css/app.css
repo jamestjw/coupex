@@ -679,6 +679,25 @@ body::before {
   text-align: center;
 }
 
+.winner-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+}
+
+.winner-marker {
+  width: 0.88rem;
+  height: 0.88rem;
+  color: #c99831;
+  flex: none;
+}
+
+.log-winner-marker {
+  margin-left: 0.26rem;
+  vertical-align: -0.12rem;
+}
+
 .seat-role-line {
   margin: 0.4rem 0 0;
   color: var(--ink-soft);

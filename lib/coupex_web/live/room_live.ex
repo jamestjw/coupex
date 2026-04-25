@@ -249,7 +249,14 @@ defmodule CoupexWeb.RoomLive do
                           <div class="seat-avatar-mark">{player.alive_count}</div>
                         </div>
 
-                        <p class="seat-name">{player.name}</p>
+                        <p class={["seat-name", winner?(@snapshot.game, player.id) && "winner-label"]}>
+                          {player.name}
+                          <.icon
+                            :if={winner?(@snapshot.game, player.id)}
+                            name="hero-trophy-mini"
+                            class="winner-marker"
+                          />
+                        </p>
 
                         <p class="seat-role-line">
                           Player · {player.alive_count} {if player.alive_count == 1,
@@ -297,7 +304,17 @@ defmodule CoupexWeb.RoomLive do
 
                 <section class="action-dock">
                   <div class="dock-left">
-                    <p class="dock-player-line">{@snapshot.game.you.name} · Seat 1</p>
+                    <p class={[
+                      "dock-player-line",
+                      winner?(@snapshot.game, @snapshot.game.you.id) && "winner-label"
+                    ]}>
+                      {@snapshot.game.you.name} · Seat 1
+                      <.icon
+                        :if={winner?(@snapshot.game, @snapshot.game.you.id)}
+                        name="hero-trophy-mini"
+                        class="winner-marker"
+                      />
+                    </p>
 
                     <div class="dock-hand">
                       <%= for {influence, index} <- Enum.with_index(@snapshot.game.you.influences) do %>
@@ -1095,6 +1112,11 @@ defmodule CoupexWeb.RoomLive do
         <span :if={@row.turn} class="turn-no">T{@row.turn}</span>
         <span :if={@row.actor} class="actor">{@row.actor}</span>
         <span :if={@row.verb} class="verb">{@row.verb}</span>
+        <.icon
+          :if={@row.kind == :win}
+          name="hero-trophy-mini"
+          class="winner-marker log-winner-marker"
+        />
         <span :if={@row.role} class={["role-tag", role_tag_class(@row.role)]}>{@row.role}</span>
         <span :if={@row.detail} class="detail">{detail_text(@row.verb, @row.detail)}</span>
         <span :if={@row.target} class="target">
@@ -1259,6 +1281,10 @@ defmodule CoupexWeb.RoomLive do
     snapshot.rematch.connected_players
     |> Enum.find(&(&1.id == snapshot.viewer_id))
     |> then(&(&1 && &1.ready))
+  end
+
+  defp winner?(game, player_id) do
+    game.status == :finished and game.winner_id == player_id
   end
 
   defp lobby_status(player) do
