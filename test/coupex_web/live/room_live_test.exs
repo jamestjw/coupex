@@ -176,6 +176,43 @@ defmodule CoupexWeb.RoomLiveTest do
     assert has_element?(host_view, "#exchange-option-0")
   end
 
+  test "disconnecting a player adds a chronicle entry", %{conn: conn} do
+    host_id = "host-player"
+    guest_id = "guest-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.join_room(code, guest_id, "Guest", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    {:ok, guest_view, _html} =
+      build_conn()
+      |> init_test_session(visitor_id: guest_id)
+      |> live(~p"/rooms/#{code}?name=Guest")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    guest_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    guest_proxy_pid = elem(guest_view.proxy, 2)
+    guest_proxy_ref = Process.monitor(guest_proxy_pid)
+    Phoenix.LiveViewTest.ClientProxy.stop(guest_proxy_pid, {:shutdown, :duplicate_topic})
+    assert_receive {:DOWN, ^guest_proxy_ref, :process, ^guest_proxy_pid, _reason}
+
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
+
+    assert Enum.any?(snapshot.game.log, fn entry ->
+             entry.kind == :break and entry.text == "Guest disconnected"
+           end)
+
+    render(host_view)
+
+    assert has_element?(host_view, ".chronicle-list .log-entry.break", "Guest disconnected")
+  end
+
   test "block claims use the same challenge modal and timer", %{conn: conn} do
     host_id = "host-player"
     guest_id = "guest-player"

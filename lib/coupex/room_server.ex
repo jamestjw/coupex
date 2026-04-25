@@ -4,6 +4,7 @@ defmodule Coupex.RoomServer do
   use GenServer
 
   alias Coupex.Game
+  alias Coupex.Game.Log
 
   @type player_id :: String.t()
   @type role :: :duke | :assassin | :captain | :ambassador | :contessa
@@ -346,7 +347,13 @@ defmodule Coupex.RoomServer do
   defp handle_player_disconnect(state, player_id) do
     case Map.fetch(state.players, player_id) do
       {:ok, player} ->
-        put_in(state.players[player_id], %{player | monitor_ref: nil, pid: nil})
+        player = %{player | monitor_ref: nil, pid: nil}
+
+        state = put_in(state.players[player_id], player)
+
+        update_in(state.game, fn game ->
+          Log.push_log(game, Log.event(:break, %{text: "#{player.name} disconnected"}))
+        end)
 
       :error ->
         state
