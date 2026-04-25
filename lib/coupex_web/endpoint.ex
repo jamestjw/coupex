@@ -8,6 +8,7 @@ defmodule CoupexWeb.Endpoint do
     store: :cookie,
     key: "_coupex_key",
     signing_salt: "GfRYcBQd",
+    encryption_salt: "coupex_encrypt_salt",
     same_site: "Lax"
   ]
 
