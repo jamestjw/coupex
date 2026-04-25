@@ -674,7 +674,7 @@ defmodule CoupexWeb.RoomLive do
                 <p class="drama-eyebrow">An action is being taken</p>
                 <h2 class="drama-title">
                   <span>{@snapshot.game.interaction.pending.actor_name}</span>
-                  claims
+                  <span>claims</span>
                   <span class={[
                     "drama-claim-pill",
                     role_class(@snapshot.game.interaction.pending.claim_role)
@@ -758,7 +758,7 @@ defmodule CoupexWeb.RoomLive do
                 <p class="drama-eyebrow">A block is being claimed</p>
                 <h2 class="drama-title">
                   <span>{@snapshot.game.interaction.block.player_name}</span>
-                  blocks as
+                  <span>blocks as</span>
                   <span class={[
                     "drama-claim-pill",
                     role_class(@snapshot.game.interaction.block.role)
