@@ -3,19 +3,17 @@ defmodule Coupex.Game do
 
   alias Coupex.Game.Log
   alias Coupex.Game.Phase
+  alias Coupex.Game.Player
   alias Coupex.Game.Validation
 
   @roles [:duke, :assassin, :captain, :ambassador, :contessa]
   @treasury_coins 50
+  @min_players 2
+  @max_players 6
 
   @type role :: unquote(Enum.reduce(@roles, &{:|, [], [&1, &2]}))
   @type card :: %{required(:role) => role(), required(:revealed) => boolean()}
-  @type game_player :: %{
-          required(:id) => String.t(),
-          required(:name) => String.t(),
-          required(:coins) => non_neg_integer(),
-          required(:influences) => [card()]
-        }
+  @type game_player :: Player.t()
 
   # Covers :action, :challenge, :challenge_lost, :block, :challenge_won, :pass, :exchange, :game_over, :break, etc.
   @type log_entry :: %{required(:kind) => atom(), optional(atom()) => any()}
@@ -98,14 +96,14 @@ defmodule Coupex.Game do
   end
 
   def new(players) when is_list(players) do
-    if length(players) in 2..6 do
+    if length(players) in @min_players..@max_players do
       deck = build_deck() |> Enum.shuffle()
 
       {game_players, deck_after_deal} =
         Enum.map_reduce(players, deck, fn player, acc_deck ->
           [first, second | rest] = acc_deck
 
-          game_player = %{
+          game_player = %Player{
             id: player.id,
             name: player.name,
             coins: 2,
@@ -132,7 +130,7 @@ defmodule Coupex.Game do
          winner_id: nil
        }}
     else
-      {:error, "Coup requires 2 to 6 players."}
+      {:error, "Coup requires #{@min_players} to #{@max_players} players."}
     end
   end
 
@@ -393,10 +391,10 @@ defmodule Coupex.Game do
           id: player.id,
           name: player.name,
           coins: player.coins,
-          eliminated: eliminated?(player),
+          eliminated: Player.eliminated?(player),
           you: player.id == viewer_id,
           influences: visible_influences(player, viewer_id),
-          alive_count: alive_influence_count(player)
+          alive_count: Player.alive_influence_count(player)
         }
       end)
 
@@ -649,7 +647,7 @@ defmodule Coupex.Game do
         Log.log_action_resolution(game, pending, %{gained: amount, lost: amount})
 
       "assassinate" ->
-        if eliminated?(fetch_player!(game, pending.target_id)) do
+        if Player.eliminated?(Player.fetch!(game.players, pending.target_id)) do
           game
         else
           begin_reveal_phase(
@@ -666,8 +664,8 @@ defmodule Coupex.Game do
   end
 
   defp begin_exchange(game, player_id) do
-    player = fetch_player!(game, player_id)
-    keep_count = alive_influence_count(player)
+    player = Player.fetch!(game.players, player_id)
+    keep_count = Player.alive_influence_count(player)
     {drawn, deck_rest} = Enum.split(game.deck, min(2, length(game.deck)))
     options = hidden_roles(player) ++ drawn
 
@@ -687,7 +685,7 @@ defmodule Coupex.Game do
   end
 
   defp resolve_steal(game, actor_id, target_id) do
-    target = fetch_player!(game, target_id)
+    target = Player.fetch!(game.players, target_id)
     amount = min(target.coins, 2)
 
     updated_game =
@@ -726,8 +724,8 @@ defmodule Coupex.Game do
   # the regular reveal-choice flow without auto-selecting a card.
   defp single_unrevealed_influence_index(game, player_id) do
     indexes =
-      game
-      |> fetch_player!(player_id)
+      game.players
+      |> Player.fetch!(player_id)
       |> Map.fetch!(:influences)
       |> Enum.with_index()
       |> Enum.filter(fn {influence, _index} -> not influence.revealed end)
@@ -766,7 +764,7 @@ defmodule Coupex.Game do
       1..length(players)
       |> Enum.find(fn step ->
         candidate = Enum.at(players, rem(current_index + step, length(players)))
-        candidate && not eliminated?(candidate)
+        candidate && not Player.eliminated?(candidate)
       end)
 
     next_player = Enum.at(players, rem(current_index + next_index, length(players)))
@@ -795,7 +793,7 @@ defmodule Coupex.Game do
   end
 
   defp check_winner(game) do
-    alive_players = Enum.reject(game.players, &eliminated?/1)
+    alive_players = Enum.reject(game.players, &Player.eliminated?/1)
 
     case alive_players do
       [winner] ->
@@ -820,7 +818,7 @@ defmodule Coupex.Game do
   end
 
   defp replace_proven_role(game, player_id, role) do
-    player = fetch_player!(game, player_id)
+    player = Player.fetch!(game.players, player_id)
     hidden = hidden_roles(player)
     kept_hidden = List.delete(hidden, role)
     deck = Enum.shuffle([role | game.deck])
@@ -840,7 +838,7 @@ defmodule Coupex.Game do
   end
 
   defp reveal_player_influence(game, player_id, index) do
-    player = fetch_player!(game, player_id)
+    player = Player.fetch!(game.players, player_id)
     influence = Enum.at(player.influences, index)
     updated_influences = List.replace_at(player.influences, index, %{influence | revealed: true})
     updated_player = %{player | influences: updated_influences}
@@ -861,7 +859,7 @@ defmodule Coupex.Game do
          game.active_player_id != viewer_id do
       []
     else
-      player = fetch_player!(game, viewer_id)
+      player = Player.fetch!(game.players, viewer_id)
       forced_coup = player.coins >= 10
 
       action_specs()
@@ -878,7 +876,7 @@ defmodule Coupex.Game do
 
   defp available_targets(game, viewer_id) do
     game.players
-    |> Enum.reject(&(&1.id == viewer_id or eliminated?(&1)))
+    |> Enum.reject(&(&1.id == viewer_id or Player.eliminated?(&1)))
     |> Enum.map(&%{id: &1.id, name: &1.name})
   end
 
@@ -925,19 +923,17 @@ defmodule Coupex.Game do
     |> Enum.map(& &1.role)
   end
 
-  defp alive_influence_count(player), do: Enum.count(player.influences, &(not &1.revealed))
-  defp eliminated?(player), do: alive_influence_count(player) == 0
-
   defp has_unrevealed_role?(game, player_id, role) do
     game
-    |> fetch_player!(player_id)
+    |> Map.fetch!(:players)
+    |> Player.fetch!(player_id)
     |> hidden_roles()
     |> Enum.member?(role)
   end
 
   defp alive_other_player_ids(game, player_id) do
     game.players
-    |> Enum.reject(&(&1.id == player_id or eliminated?(&1)))
+    |> Enum.reject(&(&1.id == player_id or Player.eliminated?(&1)))
     |> Enum.map(& &1.id)
   end
 
@@ -960,11 +956,7 @@ defmodule Coupex.Game do
     }
   end
 
-  defp fetch_player!(game, player_id) do
-    Enum.find(game.players, &(&1.id == player_id)) || raise "missing player #{player_id}"
-  end
-
-  defp player_name(game, player_id), do: fetch_player!(game, player_id).name
+  defp player_name(game, player_id), do: Player.fetch!(game.players, player_id).name
   defp target_name(_game, nil), do: nil
   defp target_name(game, target_id), do: player_name(game, target_id)
 

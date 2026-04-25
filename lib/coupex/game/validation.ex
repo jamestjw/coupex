@@ -1,6 +1,8 @@
 defmodule Coupex.Game.Validation do
   @moduledoc false
 
+  alias Coupex.Game.Player
+
   def ensure_active(%{status: :active}), do: :ok
   def ensure_active(_game), do: {:error, "The game is over."}
 
@@ -15,7 +17,7 @@ defmodule Coupex.Game.Validation do
   end
 
   def ensure_action_allowed(game, player_id, spec) do
-    player = fetch_player!(game, player_id)
+    player = Player.fetch!(game.players, player_id)
 
     cond do
       player.coins >= 10 and spec.id != "coup" ->
@@ -39,7 +41,7 @@ defmodule Coupex.Game.Validation do
       actor_id == target_id ->
         {:error, "You cannot target yourself."}
 
-      is_nil(Enum.find(game.players, &(&1.id == target_id and not eliminated?(&1)))) ->
+      is_nil(Enum.find(game.players, &(&1.id == target_id and not Player.eliminated?(&1)))) ->
         {:error, "Choose a living target."}
 
       true ->
@@ -64,7 +66,7 @@ defmodule Coupex.Game.Validation do
   end
 
   def ensure_reveal_index(game, player_id, index) do
-    player = fetch_player!(game, player_id)
+    player = Player.fetch!(game.players, player_id)
     influence = Enum.at(player.influences, index)
 
     cond do
@@ -88,11 +90,4 @@ defmodule Coupex.Game.Validation do
   def block_roles("assassinate"), do: [:contessa]
   def block_roles("steal"), do: [:captain, :ambassador]
   def block_roles(_), do: []
-
-  defp alive_influence_count(player), do: Enum.count(player.influences, &(not &1.revealed))
-  defp eliminated?(player), do: alive_influence_count(player) == 0
-
-  defp fetch_player!(game, player_id) do
-    Enum.find(game.players, &(&1.id == player_id)) || raise "missing player #{player_id}"
-  end
 end

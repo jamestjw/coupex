@@ -1,6 +1,7 @@
 defmodule Coupex.Game.Phase do
   @moduledoc false
 
+  alias Coupex.Game.Player
   alias Coupex.Game.Validation
 
   @type phase :: %{
@@ -18,7 +19,7 @@ defmodule Coupex.Game.Phase do
 
   def block_candidates(game, _actor_id, action, target_id)
       when action in ["assassinate", "steal"] do
-    if Enum.any?(game.players, &(&1.id == target_id and not eliminated?(&1))) do
+    if Enum.any?(game.players, &(&1.id == target_id and not Player.eliminated?(&1))) do
       [target_id]
     else
       []
@@ -31,10 +32,7 @@ defmodule Coupex.Game.Phase do
 
   defp alive_other_player_ids(game, player_id) do
     game.players
-    |> Enum.reject(&(&1.id == player_id or eliminated?(&1)))
+    |> Enum.reject(&(&1.id == player_id or Player.eliminated?(&1)))
     |> Enum.map(& &1.id)
   end
-
-  defp eliminated?(player), do: alive_influence_count(player) == 0
-  defp alive_influence_count(player), do: Enum.count(player.influences, &(not &1.revealed))
 end

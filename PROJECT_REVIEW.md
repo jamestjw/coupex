@@ -17,17 +17,6 @@ This document outlines the architectural review of the Coupex project, identifyi
 
 ---
 
-## 2. Logic Duplication (Domain Model)
-
-### **Smell: Fragmented Player Logic**
-Functions like `eliminated?`, `alive_influence_count`, and `fetch_player!` are duplicated across `Game`, `Validation`, and `Phase` modules.
-
-### **Solution: Dedicated Player Module**
-*   **`Coupex.Game.Player`**: Define a struct for players and move all player-centric logic there. 
-*   **Single Source of Truth**: Update all game modules to use the `Player` module's functions. This ensures that if the definition of "eliminated" changes, it only needs to be updated in one place.
-
----
-
 ## 3. Coupling (Context Encapsulation)
 
 ### **Smell: Direct GenServer Calls**

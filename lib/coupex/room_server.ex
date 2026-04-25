@@ -142,6 +142,9 @@ defmodule Coupex.RoomServer do
   @spec subscribe(String.t()) :: :ok | {:error, String.t()}
   def subscribe(code), do: Phoenix.PubSub.subscribe(Coupex.PubSub, topic(code))
 
+  @min_players 2
+  @max_players 6
+
   @impl true
   def init(code) do
     {:ok,
@@ -155,19 +158,21 @@ defmodule Coupex.RoomServer do
   end
 
   @impl true
+  @spec handle_call({:join_room, player_id(), String.t(), pid()}, GenServer.from(), room()) ::
+          {:reply, {:ok, view()} | {:error, String.t()}, room()}
   def handle_call({:join_room, player_id, name, pid}, _from, state) do
     normalized_name = normalize_name(name)
+    player_already_joined_room = Map.has_key?(state.players, player_id)
 
     cond do
-      map_size(state.players) >= 6 and not Map.has_key?(state.players, player_id) ->
+      map_size(state.players) >= @max_players and not player_already_joined_room ->
         {:reply, {:error, "That room is already full."}, state}
 
-      state.game && not Map.has_key?(state.players, player_id) ->
+      state.game && not player_already_joined_room ->
         {:reply, {:error, "This game is already in progress."}, state}
 
       true ->
-        {players, order, host_id} = upsert_player(state, player_id, normalized_name, pid)
-        next_state = %{state | players: players, order: order, host_id: host_id}
+        next_state = upsert_player(state, player_id, normalized_name, pid)
         broadcast(next_state)
         {:reply, {:ok, view(next_state, player_id)}, next_state}
     end
@@ -320,7 +325,7 @@ defmodule Coupex.RoomServer do
       viewer_id: viewer_id,
       host_id: state.host_id,
       player_count: length(players),
-      can_start: length(players) in 2..6,
+      can_start: length(players) in @min_players..@max_players,
       lobby_players: players,
       game: state.game && Game.view(state.game, viewer_id),
       rematch: rematch_view(state)
@@ -367,7 +372,7 @@ defmodule Coupex.RoomServer do
     order = if player_id in state.order, do: state.order, else: state.order ++ [player_id]
     host_id = state.host_id || player_id
 
-    {players, order, host_id}
+    %{state | players: players, order: order, host_id: host_id}
   end
 
   defp starting_players(state, player_ids \\ nil) do
@@ -395,7 +400,9 @@ defmodule Coupex.RoomServer do
   end
 
   defp ensure_player_count(state) do
-    if length(state.order) in 2..6, do: :ok, else: {:error, "Coup requires 2 to 6 players."}
+    if length(state.order) in @min_players..@max_players,
+      do: :ok,
+      else: {:error, "Coup requires #{@min_players} to #{@max_players} players."}
   end
 
   defp ensure_all_ready(state) do
@@ -435,9 +442,9 @@ defmodule Coupex.RoomServer do
   defp ensure_connected_player_count(state) do
     connected_ids = connected_player_ids(state)
 
-    if length(connected_ids) in 2..6,
+    if length(connected_ids) in @min_players..@max_players,
       do: {:ok, connected_ids},
-      else: {:error, "At least 2 connected players are required for a rematch."}
+      else: {:error, "At least #{@min_players} connected players are required for a rematch."}
   end
 
   defp ensure_connected_rematch_ready(state, rematch_host_id, connected_ids) do
@@ -506,9 +513,9 @@ defmodule Coupex.RoomServer do
       host_id: host_id,
       connected_players: players,
       connected_count: connected_count,
-      min_players_met: connected_count >= 2,
-      max_players_met: connected_count <= 6,
-      can_restart: pending_names == [] and connected_count in 2..6,
+      min_players_met: connected_count >= @min_players,
+      max_players_met: connected_count <= @max_players,
+      can_restart: pending_names == [] and connected_count in @min_players..@max_players,
       pending_names: pending_names
     }
   end
