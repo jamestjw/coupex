@@ -470,6 +470,10 @@ defmodule Coupex.RoomServer do
     Phoenix.PubSub.broadcast(Coupex.PubSub, topic(state.code), {:room_updated, state.code})
   end
 
+  # Race condition: We generate a code, check it's free, then register it.
+  # In the nanosecond gap between lookup and start_link, another process
+  # could grab the same code. This results in {:error, {:already_started, pid}}.
+  # Not worth fixing: 62^6 (~56B) codes, window is nanoseconds.
   defp unique_code do
     code =
       5
