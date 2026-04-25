@@ -15,6 +15,17 @@ defmodule CoupexWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :health do
+    plug :accepts, ["json"]
+  end
+
+  scope "/health", CoupexWeb do
+    pipe_through :health
+
+    get "/live", HealthController, :live
+    get "/ready", HealthController, :ready
+  end
+
   scope "/", CoupexWeb do
     pipe_through :browser
 

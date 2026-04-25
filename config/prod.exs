@@ -13,7 +13,7 @@ config :coupex, CoupexWeb.Endpoint, cache_static_manifest: "priv/static/cache_ma
 config :coupex, CoupexWeb.Endpoint,
   force_ssl: [rewrite_on: [:x_forwarded_proto]],
   exclude: [
-    # paths: ["/health"],
+    paths: ["/health/live", "/health/ready"],
     hosts: ["localhost", "127.0.0.1"]
   ],
   session_opts: [
