@@ -8,6 +8,39 @@ defmodule Coupex.Game do
   @roles [:duke, :assassin, :captain, :ambassador, :contessa]
   @treasury_coins 50
 
+  @type role :: unquote(Enum.reduce(@roles, &{:|, [], [&1, &2]}))
+  @type card :: %{required(:role) => role(), required(:revealed) => boolean()}
+  @type game_player :: %{
+          required(:id) => String.t(),
+          required(:name) => String.t(),
+          required(:coins) => non_neg_integer(),
+          required(:influences) => [card()]
+        }
+
+  # Covers :action, :challenge, :challenge_lost, :block, :challenge_won, :pass, :exchange, :game_over, :break, etc.
+  @type log_entry :: %{required(:kind) => atom(), optional(atom()) => any()}
+
+  # Phase kinds include :awaiting_action, :awaiting_action_responses, :awaiting_block, :awaiting_exchange, :game_over
+  @typep phase_option ::
+           {:pending, map()}
+           | {:eligible_ids, [String.t()]}
+           | {:passed_ids, map()}
+           | {:exchange_cards, [card()]}
+  @type phase :: %{required(:kind) => atom(), optional(phase_option()) => any()}
+
+  @type t :: %{
+          required(:status) => :active | :finished,
+          required(:players) => [game_player()],
+          required(:active_player_id) => String.t(),
+          required(:turn_number) => non_neg_integer(),
+          required(:round_number) => non_neg_integer(),
+          required(:treasury) => non_neg_integer(),
+          required(:deck) => [card()],
+          required(:phase) => Phase.t(),
+          required(:log) => [log_entry()],
+          required(:winner_id) => String.t() | nil
+        }
+
   def roles, do: @roles
 
   def action_specs do

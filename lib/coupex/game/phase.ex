@@ -3,6 +3,16 @@ defmodule Coupex.Game.Phase do
 
   alias Coupex.Game.Validation
 
+  @type phase :: %{
+          required(:kind) => atom(),
+          optional(:pending) => map(),
+          optional(:eligible_ids) => [String.t()],
+          optional(:passed_ids) => map(),
+          optional(:exchange_cards) => [map()]
+        }
+
+  @type t :: phase()
+
   def block_candidates(game, actor_id, "foreign_aid", _target_id),
     do: alive_other_player_ids(game, actor_id)
 
