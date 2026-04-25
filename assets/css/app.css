@@ -317,6 +317,11 @@ body::before {
   color: var(--paper);
 }
 
+.court-button-dark:hover {
+  background: rgba(26, 23, 20, 0.92);
+  color: var(--paper);
+}
+
 .court-stage-host {
   min-height: 100vh;
   display: grid;
