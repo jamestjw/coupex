@@ -826,7 +826,20 @@ defmodule CoupexWeb.RoomLive do
       <% else %>
         <section class="lobby-shell">
           <div class="landing-card lobby-card">
-            <p class="landing-tag">Room {@snapshot.code}</p>
+            <div class="lobby-room-code">
+              <p class="landing-tag">Room {@snapshot.code}</p>
+              <button
+                id="copy-room-code-button"
+                type="button"
+                class="room-code-copy"
+                phx-hook="CopyRoomCode"
+                data-room-code={@snapshot.code}
+                aria-label="Copy room code"
+                title="Copy room code"
+              >
+                <.icon name="hero-document-duplicate-mini" class="size-4" />
+              </button>
+            </div>
             <h1 class="landing-title">Court Gathering<span>.</span></h1>
 
             <div class="lobby-list">

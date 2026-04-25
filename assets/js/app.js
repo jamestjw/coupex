@@ -105,6 +105,55 @@ const LogAutoScroll = {
   },
 }
 
+const CopyRoomCode = {
+  mounted() {
+    this.clickHandler = async () => {
+      const roomCode = this.el.dataset.roomCode
+
+      if (!roomCode) {
+        return
+      }
+
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(roomCode)
+        } else {
+          const area = document.createElement("textarea")
+          area.value = roomCode
+          area.setAttribute("readonly", "")
+          area.style.position = "absolute"
+          area.style.left = "-9999px"
+          document.body.appendChild(area)
+          area.select()
+          document.execCommand("copy")
+          document.body.removeChild(area)
+        }
+
+        this.el.classList.add("copied")
+        window.clearTimeout(this.copiedTimer)
+        this.copiedTimer = window.setTimeout(() => {
+          this.el.classList.remove("copied")
+        }, 1400)
+      } catch (_error) {
+        // no-op
+      }
+    }
+
+    this.el.addEventListener("click", this.clickHandler)
+  },
+
+  destroyed() {
+    if (this.clickHandler) {
+      this.el.removeEventListener("click", this.clickHandler)
+    }
+
+    if (this.copiedTimer) {
+      window.clearTimeout(this.copiedTimer)
+      this.copiedTimer = null
+    }
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
@@ -113,6 +162,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     ...colocatedHooks,
     ClaimChallengeCountdown,
     LogAutoScroll,
+    CopyRoomCode,
   },
 })
 

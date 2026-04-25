@@ -2,6 +2,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/coupex_web";
+@plugin "../vendor/heroicons";
 @import "./responsive.css";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
@@ -165,6 +166,41 @@ body::before {
   margin-top: 1rem;
   margin-bottom: 0.75rem;
   max-width: none;
+}
+
+.lobby-room-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+}
+
+.room-code-copy {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(26, 23, 20, 0.78);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.room-code-copy:hover,
+.room-code-copy:focus-visible {
+  color: rgba(26, 23, 20, 1);
+  background: rgba(26, 23, 20, 0.08);
+}
+
+.room-code-copy:focus-visible {
+  outline: 2px solid rgba(184, 50, 50, 0.45);
+  outline-offset: 2px;
+}
+
+.room-code-copy.copied {
+  color: rgba(47, 111, 53, 1);
+  background: rgba(47, 111, 53, 0.12);
 }
 
 .landing-form,
