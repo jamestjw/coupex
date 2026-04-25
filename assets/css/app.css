@@ -1237,8 +1237,8 @@ body::before {
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: rgba(26, 23, 20, 0.68);
-  backdrop-filter: blur(6px);
+  background: rgba(26, 23, 20, 0.4);
+  backdrop-filter: blur(1px);
   animation: drama-fade-in 0.22s ease-out;
 }
 
