@@ -159,10 +159,11 @@ defmodule Coupex.RoomServer do
          :ok <- ensure_rematch_host(rematch_host_id, player_id),
          {:ok, connected_ids} <- ensure_connected_player_count(state),
          :ok <- ensure_connected_rematch_ready(state, rematch_host_id, connected_ids),
-         {:ok, game} <- Game.new(starting_players(state, connected_ids)) do
+         play_order = Enum.shuffle(connected_ids),
+         {:ok, game} <- Game.new(starting_players(state, play_order)) do
       next_state =
         state
-        |> prune_to_players(connected_ids)
+        |> prune_to_players(play_order)
         |> Map.put(:host_id, rematch_host_id)
         |> Map.put(:game, game)
         |> Map.update!(:players, &reset_ready/1)
