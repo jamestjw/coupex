@@ -16,11 +16,8 @@ config :coupex, CoupexWeb.Endpoint,
     # paths: ["/health"],
     hosts: ["localhost", "127.0.0.1"]
   ],
-  session_options: [
-    store: :cookie,
-    key: "_coupex_web",
-    signing_salt: "coupex_session_salt",
-    encrypt: true
+  session_opts: [
+    encryption_salt: "coupex_encrypt_salt"
   ]
 
 # Configure Swoosh API Client

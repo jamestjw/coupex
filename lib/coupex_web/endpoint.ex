@@ -4,13 +4,15 @@ defmodule CoupexWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_coupex_key",
-    signing_salt: "GfRYcBQd",
-    encryption_salt: "coupex_encrypt_salt",
-    same_site: "Lax"
-  ]
+  @session_options Keyword.merge(
+    [
+      store: :cookie,
+      key: "_coupex_key",
+      signing_salt: "GfRYcBQd",
+      same_site: "Lax"
+    ],
+    Application.get_env(:coupex, CoupexWeb.Endpoint)[:session_opts] || []
+  )
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
