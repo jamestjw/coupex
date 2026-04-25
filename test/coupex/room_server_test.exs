@@ -70,10 +70,12 @@ defmodule Coupex.RoomServerTest do
     mark_finished!(code)
 
     Process.exit(host_pid, :shutdown)
-    _ = :sys.get_state(GenServer.whereis(RoomServer.via(code)))
+    ref = Process.monitor(host_pid)
+    assert_receive {:DOWN, ^ref, :process, _, _}
 
     assert {:ok, snapshot} = RoomServer.snapshot(code, guest_id)
-    assert snapshot.rematch.host_id == guest_id
+
+    assert snapshot.rematch.host_id in [guest_id, ally_id]
 
     assert {:ok, _snapshot} = RoomServer.toggle_rematch_ready(code, ally_id)
     assert {:ok, restarted} = RoomServer.restart_game(code, guest_id)

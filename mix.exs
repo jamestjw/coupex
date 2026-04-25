@@ -27,7 +27,7 @@ defmodule Coupex.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :dev, test: :test]
     ]
   end
 
@@ -62,7 +62,8 @@ defmodule Coupex.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false}
     ]
   end
 
@@ -82,7 +83,17 @@ defmodule Coupex.MixProject do
         "esbuild coupex --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        &run_dialyzer/1,
+        "cmd mix test"
+      ]
     ]
+  end
+
+  defp run_dialyzer(_args) do
+    Mix.Task.run("dialyzer")
   end
 end
