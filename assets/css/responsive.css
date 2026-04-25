@@ -266,3 +266,353 @@
     pointer-events: none;
   }
 }
+
+@media (max-width: 560px) {
+  .landing-shell,
+  .lobby-shell {
+    min-height: 100dvh;
+    align-items: start;
+    padding: 0.75rem;
+  }
+
+  .landing-card,
+  .lobby-card {
+    width: 100%;
+    padding: 1.1rem 0.95rem 1.2rem;
+    box-shadow: 0 16px 32px -22px rgba(26, 23, 20, 0.4);
+  }
+
+  .landing-tag {
+    font-size: 0.58rem;
+    letter-spacing: 0.16em;
+  }
+
+  .landing-title {
+    margin: 0.45rem 0 0.65rem;
+    font-size: clamp(3rem, 16vw, 3.9rem);
+  }
+
+  .landing-copy {
+    font-size: 1.02rem;
+    line-height: 1.38;
+  }
+
+  .landing-form {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .landing-grid,
+  .landing-room-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    margin-top: 0;
+  }
+
+  .landing-field,
+  .landing-room-field,
+  .landing-button-wrap {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .landing-button-wrap {
+    align-items: stretch;
+  }
+
+  .landing-primary-button,
+  .landing-secondary-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 3.15rem;
+  }
+
+  .landing-room-field .room-label {
+    margin-bottom: 0.38rem;
+    font-size: 0.92rem;
+  }
+
+  .landing-form .court-input,
+  .landing-form .court-input-room {
+    min-width: 0;
+  }
+
+  .court-stage-host {
+    min-height: 100dvh;
+    padding: 0;
+  }
+
+  .court-shell {
+    width: 100%;
+    min-height: 100dvh;
+  }
+
+  .court-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand room"
+      "stats stats";
+    align-items: center;
+    column-gap: 0.55rem;
+    row-gap: 0.42rem;
+    min-height: auto;
+    padding: 0.46rem 0.65rem 0.52rem;
+  }
+
+  .court-stats {
+    grid-area: stats;
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.6rem;
+    text-align: left;
+  }
+
+  .court-stats div {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.16rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .court-stats span {
+    display: none;
+  }
+
+  .court-stats strong {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
+  }
+
+  .court-stats div:nth-child(1) strong::before {
+    content: "TR ";
+    color: var(--ink-soft);
+  }
+
+  .court-stats div:nth-child(2) strong::before {
+    content: "DK ";
+    color: var(--ink-soft);
+  }
+
+  .court-stats div:nth-child(3) strong::before {
+    content: "R ";
+    color: var(--ink-soft);
+  }
+
+  .court-stats div:nth-child(4) strong::before {
+    content: "T ";
+    color: var(--ink-soft);
+  }
+
+  .brand-block {
+    grid-area: brand;
+    min-width: 0;
+  }
+
+  .brand-link {
+    font-size: 1.05rem;
+    white-space: nowrap;
+  }
+
+  .room-pill {
+    grid-area: room;
+    width: auto;
+    justify-content: flex-end;
+    justify-self: end;
+    gap: 0.35rem;
+    font-size: 0.63rem;
+    letter-spacing: 0.14em;
+    white-space: nowrap;
+  }
+
+  .table-stage {
+    min-height: auto;
+    padding: 0.52rem 0.65rem 0.65rem;
+    overflow: visible;
+  }
+
+  .table-panel {
+    border-right: 0;
+  }
+
+  .table-felt,
+  .table-wordmark,
+  .center-pile {
+    display: none;
+  }
+
+  .seat-grid {
+    position: static;
+    inset: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-content: start;
+  }
+
+  .seat-grid > .seat-card {
+    position: static;
+    width: 100%;
+    max-width: none;
+    min-height: 8.4rem;
+    padding: 0.65rem 0.55rem;
+    transform: none;
+  }
+
+  .seat-grid-1 > :nth-child(1),
+  .seat-grid-2 > :nth-child(1),
+  .seat-grid-2 > :nth-child(2),
+  .seat-grid-3 > :nth-child(1),
+  .seat-grid-3 > :nth-child(2),
+  .seat-grid-3 > :nth-child(3),
+  .seat-grid-4 > :nth-child(1),
+  .seat-grid-4 > :nth-child(2),
+  .seat-grid-4 > :nth-child(3),
+  .seat-grid-4 > :nth-child(4),
+  .seat-grid-5 > :nth-child(1),
+  .seat-grid-5 > :nth-child(2),
+  .seat-grid-5 > :nth-child(3),
+  .seat-grid-5 > :nth-child(4),
+  .seat-grid-5 > :nth-child(5) {
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    transform: none;
+  }
+
+  .seat-name {
+    font-size: 0.94rem;
+  }
+
+  .seat-role-line {
+    font-size: 0.5rem;
+  }
+
+  .seat-cards {
+    justify-content: center;
+  }
+
+  .action-dock {
+    gap: 0.7rem;
+    padding: 0.6rem 0.75rem 0.75rem;
+  }
+
+  .chronicle-panel {
+    border-left: 0;
+    border-top: 1px solid rgba(26, 23, 20, 0.24);
+    grid-template-rows: auto minmax(0, 8.2rem) auto;
+  }
+
+  .chronicle-head,
+  .chronicle-list {
+    padding: 0.52rem 0.65rem;
+  }
+
+  .chronicle-head > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .chronicle-head p {
+    font-size: 1.08rem;
+  }
+
+  .chronicle-head span {
+    font-size: 0.54rem;
+    letter-spacing: 0.14em;
+  }
+
+  .chronicle-foot {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.5rem;
+    letter-spacing: 0.14em;
+  }
+
+  .log-entry {
+    padding: 0.42rem 0.65rem;
+    font-size: 0.7rem;
+    line-height: 1.28;
+  }
+
+  .dock-left,
+  .dock-center,
+  .turn-banner {
+    width: 100%;
+  }
+
+  .dock-center,
+  .turn-banner {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .dock-hand {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scroll-snap-type: x proximity;
+  }
+
+  .dock-hand .hand-card {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  .dock-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .dock-actions-grid-2-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .targeted-action-form,
+  .response-card,
+  .exchange-card {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .seat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .court-stats strong {
+    font-size: 1.2rem;
+  }
+
+  .dock-actions-grid-2-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hand-card {
+    width: 4rem;
+    min-width: 4rem;
+    min-height: 5.8rem;
+  }
+
+  .court-button,
+  .court-button.small {
+    min-height: 2.75rem;
+  }
+
+  .action-tag {
+    min-width: 1.45rem;
+  }
+}

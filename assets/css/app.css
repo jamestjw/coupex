@@ -3,7 +3,6 @@
 @source "../js";
 @source "../../lib/coupex_web";
 @plugin "../vendor/heroicons";
-@import "./responsive.css";
 
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
@@ -540,7 +539,7 @@ body::before {
 
 .center-pile > div > span {
   font-family: "JetBrains Mono", monospace;
-  font-size: 0.64rem;
+  font-size: 0.6rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -842,9 +841,9 @@ body::before {
 
 .hand-card {
   position: relative;
-  width: 4.3rem;
-  min-width: 4.3rem;
-  min-height: 5.85rem;
+  width: 4.55rem;
+  min-width: 4.55rem;
+  min-height: 6rem;
   display: grid;
   grid-template-rows: auto 1fr auto;
   align-items: stretch;
@@ -882,10 +881,11 @@ body::before {
 .hand-card-name {
   margin-top: 0.18rem;
   font-family: "DM Serif Display", Georgia, serif;
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   font-weight: 700;
-  line-height: 1;
-  text-align: left;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .role-duke .hand-card-art,
@@ -1040,7 +1040,7 @@ body::before {
 
 .action-dock {
   display: grid;
-  grid-template-columns: 18rem minmax(0, 1fr) 9rem;
+  grid-template-columns: minmax(19rem, 21rem) minmax(0, 1fr) minmax(8rem, 9rem);
   align-items: center;
   gap: 2rem;
   min-height: 6rem;
@@ -1853,3 +1853,5 @@ body::before {
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
+
+@import "./responsive.css";
