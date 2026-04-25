@@ -5,6 +5,48 @@ defmodule Coupex.RoomServer do
 
   alias Coupex.Game
 
+  @type player_id :: String.t()
+  @type role :: :duke | :assassin | :captain | :ambassador | :contessa
+
+  @type lobby_player :: %{
+          required(:id) => player_id(),
+          required(:name) => String.t(),
+          required(:ready) => boolean(),
+          required(:host) => boolean()
+        }
+  @type rematch :: %{
+          optional(:winner_id) => player_id() | nil,
+          optional(:host_ready) => boolean(),
+          optional(:challenger_ready) => boolean()
+        }
+
+  @type view :: %{
+          required(:code) => String.t(),
+          required(:viewer_id) => player_id(),
+          required(:host_id) => player_id() | nil,
+          required(:player_count) => non_neg_integer(),
+          required(:can_start) => boolean(),
+          required(:lobby_players) => [lobby_player()],
+          required(:game) => Game.t() | nil,
+          required(:rematch) => rematch()
+        }
+
+  @type player :: %{
+          required(:id) => player_id(),
+          required(:name) => String.t(),
+          required(:ready) => boolean(),
+          required(:monitor_ref) => reference(),
+          required(:pid) => pid()
+        }
+
+  @type room :: %{
+          required(:code) => String.t(),
+          required(:host_id) => player_id() | nil,
+          required(:players) => %{optional(player_id()) => player()},
+          required(:order) => [player_id()],
+          required(:game) => Game.t() | nil
+        }
+
   @topic_prefix "room:"
   @block_roles %{
     "duke" => :duke,
@@ -28,6 +70,7 @@ defmodule Coupex.RoomServer do
     GenServer.start_link(__MODULE__, code, name: via(code))
   end
 
+  @spec create_room() :: {:ok, String.t()} | {:error, String.t()}
   def create_room do
     code = unique_code()
 
@@ -38,6 +81,7 @@ defmodule Coupex.RoomServer do
 
   def via(code), do: {:via, Registry, {Coupex.RoomRegistry, normalize_code(code)}}
 
+  @spec create_room(player_id(), String.t(), pid()) :: {:ok, String.t()} | {:error, String.t()}
   def create_room(player_id, name, pid) do
     with {:ok, code} <- create_room(),
          {:ok, _snapshot} <- join_room(code, player_id, name, pid) do
@@ -45,37 +89,57 @@ defmodule Coupex.RoomServer do
     end
   end
 
+  @spec join_room(String.t(), player_id(), String.t(), pid()) ::
+          {:ok, view()} | {:error, String.t()}
   def join_room(code, player_id, name, pid) do
     GenServer.call(via(code), {:join_room, player_id, name, pid})
   catch
     :exit, _ -> {:error, "That room does not exist."}
   end
 
+  @spec snapshot(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def snapshot(code, viewer_id) do
     GenServer.call(via(code), {:snapshot, viewer_id})
   catch
     :exit, _ -> {:error, "That room does not exist."}
   end
 
+  @spec toggle_ready(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def toggle_ready(code, player_id), do: GenServer.call(via(code), {:toggle_ready, player_id})
+
+  @spec start_game(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def start_game(code, player_id), do: GenServer.call(via(code), {:start_game, player_id})
 
+  @spec toggle_rematch_ready(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def toggle_rematch_ready(code, player_id),
     do: GenServer.call(via(code), {:toggle_rematch_ready, player_id})
 
+  @spec restart_game(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def restart_game(code, player_id), do: GenServer.call(via(code), {:restart_game, player_id})
 
+  @spec take_action(String.t(), player_id(), String.t(), String.t() | nil) ::
+          {:ok, view()} | {:error, String.t()}
   def take_action(code, player_id, action_id, target_id),
     do: GenServer.call(via(code), {:take_action, player_id, action_id, target_id})
 
+  @spec pass(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def pass(code, player_id), do: GenServer.call(via(code), {:pass, player_id})
+
+  @spec challenge(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def challenge(code, player_id), do: GenServer.call(via(code), {:challenge, player_id})
+
+  @spec block(String.t(), player_id(), role()) :: {:ok, view()} | {:error, String.t()}
   def block(code, player_id, role_id), do: GenServer.call(via(code), {:block, player_id, role_id})
+
+  @spec reveal(String.t(), player_id(), non_neg_integer()) :: {:ok, view()} | {:error, String.t()}
   def reveal(code, player_id, index), do: GenServer.call(via(code), {:reveal, player_id, index})
 
+  @spec exchange(String.t(), player_id(), [non_neg_integer()]) ::
+          {:ok, view()} | {:error, String.t()}
   def exchange(code, player_id, indexes),
     do: GenServer.call(via(code), {:exchange, player_id, indexes})
 
+  @spec subscribe(String.t()) :: :ok | {:error, String.t()}
   def subscribe(code), do: Phoenix.PubSub.subscribe(Coupex.PubSub, topic(code))
 
   @impl true
