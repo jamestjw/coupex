@@ -29,7 +29,12 @@ config :swoosh, api_client: Swoosh.ApiClient.Req
 config :swoosh, local: false
 
 # Do not print debug messages in production
-config :logger, level: :info
+config :logger,
+  level: :info,
+  default_formatter: [
+    format: {CoupexWeb.LoggerFormatter, :format},
+    metadata: [:request_id]
+  ]
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
