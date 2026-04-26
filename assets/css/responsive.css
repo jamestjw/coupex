@@ -503,7 +503,13 @@
   }
 
   .action-dock {
-    gap: 0.7rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "left turn"
+      "center center";
+    align-items: start;
+    column-gap: 0.7rem;
+    row-gap: 0.7rem;
     padding: 0.6rem 0.75rem 0.75rem;
   }
 
@@ -547,15 +553,27 @@
   }
 
   .dock-left,
-  .dock-center,
-  .turn-banner {
+  .dock-center {
     width: 100%;
   }
 
-  .dock-center,
-  .turn-banner {
+  .dock-left {
+    grid-area: left;
+  }
+
+  .dock-center {
+    grid-area: center;
     align-items: flex-start;
     text-align: left;
+  }
+
+  .turn-banner {
+    grid-area: turn;
+    width: auto;
+    justify-self: end;
+    align-self: start;
+    align-items: flex-end;
+    text-align: right;
   }
 
   .dock-hand {
