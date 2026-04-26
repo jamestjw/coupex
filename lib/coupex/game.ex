@@ -95,6 +95,7 @@ defmodule Coupex.Game do
     ]
   end
 
+  @spec new([%{id: String.t(), name: String.t()}]) :: {:ok, t()} | {:error, String.t()}
   def new(players) when is_list(players) do
     if length(players) in @min_players..@max_players do
       deck = build_deck() |> Enum.shuffle()
@@ -199,45 +200,44 @@ defmodule Coupex.Game do
       %{
         kind: :awaiting_action_responses,
         eligible_ids: eligible_ids,
-        passed_ids: passed_ids,
         pending: pending
       } ->
         with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          next_passed = MapSet.put(passed_ids, player_id)
+          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
 
-          if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
+          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
+            # Challenges are done, now we proceed to handle blocks
             after_action_responses(game, pending)
           else
-            {:ok, %{game | phase: %{game.phase | passed_ids: next_passed}}}
+            {:ok, game}
           end
         end
 
       %{
         kind: :awaiting_block,
         eligible_ids: eligible_ids,
-        passed_ids: passed_ids,
         pending: pending
       } ->
         with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          next_passed = MapSet.put(passed_ids, player_id)
+          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
 
-          if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
+          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
+            # Challenge and blocks are both done, we can resolve the action
             {:ok, resolve_and_advance(game, pending)}
           else
-            {:ok, %{game | phase: %{game.phase | passed_ids: next_passed}}}
+            {:ok, game}
           end
         end
 
       %{
         kind: :awaiting_block_challenge,
         eligible_ids: eligible_ids,
-        passed_ids: passed_ids,
         block: block
       } ->
         with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          next_passed = MapSet.put(passed_ids, player_id)
+          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
 
-          if Enum.all?(eligible_ids, &MapSet.member?(next_passed, &1)) do
+          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
             game =
               Log.push_log(
                 game,
@@ -249,7 +249,7 @@ defmodule Coupex.Game do
 
             {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}
           else
-            {:ok, %{game | phase: %{game.phase | passed_ids: next_passed}}}
+            {:ok, game}
           end
         end
 
@@ -545,6 +545,8 @@ defmodule Coupex.Game do
   end
 
   defp after_action_responses(game, pending) do
+    # Players might have been eliminated during action responses, i.e. we need
+    # to recalculate block_candidates
     block_candidates =
       Phase.block_candidates(game, pending.actor_id, pending.action, pending.target_id)
 
@@ -553,6 +555,7 @@ defmodule Coupex.Game do
     if pending.block_roles == [] or block_candidates == [] do
       {:ok, resolve_and_advance(game, pending)}
     else
+      # Moving on to blocking phase
       {:ok,
        put_phase(game, %{
          kind: :awaiting_block,
@@ -648,6 +651,8 @@ defmodule Coupex.Game do
 
       "assassinate" ->
         if Player.eliminated?(Player.fetch!(game.players, pending.target_id)) do
+          # Maybe the player challenged the assassination and failed, and hence is
+          # already eliminated, there is nothing we need to do here.
           game
         else
           begin_reveal_phase(
