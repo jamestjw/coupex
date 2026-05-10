@@ -119,20 +119,13 @@ defmodule Coupex.Bot do
     |> elem(1)
   end
 
-  defp choose_exchange_indexes(game, player_id) do
+  defp choose_exchange_indexes(game, _player_id) do
     phase = game.phase
-
-    available =
-      game.players
-      |> Enum.find(&(&1.id == player_id))
-      |> Map.fetch!(:influences)
-      |> Enum.reject(& &1.revealed)
-      |> Enum.map(&role_label(&1.role))
-      |> Kernel.++(Enum.map(phase.options, &role_label/1))
 
     keep_count = phase.keep_count
 
-    available
+    phase.options
+    |> Enum.map(&role_label/1)
     |> Enum.with_index()
     |> Enum.sort_by(fn {card, _index} -> -card_value(card) end)
     |> Enum.take(keep_count)

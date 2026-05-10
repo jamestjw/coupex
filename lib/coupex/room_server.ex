@@ -3,6 +3,8 @@ defmodule Coupex.RoomServer do
 
   use GenServer
 
+  require Logger
+
   alias Coupex.Game
   alias Coupex.Game.Log
 
@@ -701,7 +703,7 @@ defmodule Coupex.RoomServer do
       bot_id ->
         case play_bot_turn(state, bot_id) do
           {:ok, next_state} -> run_bot_turns(next_state, depth + 1)
-          {:error, _message} -> state
+          {:error, message} -> log_bot_failure(state, bot_id, message)
         end
     end
   end
@@ -752,4 +754,25 @@ defmodule Coupex.RoomServer do
 
   defp update_game(state, {:ok, game}), do: {:ok, %{state | game: game}}
   defp update_game(_state, {:error, message}), do: {:error, message}
+
+  defp log_bot_failure(%{game: nil} = state, bot_id, message) do
+    Logger.warning("bot #{bot_id} failed without an active game: #{message}")
+    state
+  end
+
+  defp log_bot_failure(%{game: game} = state, bot_id, message) do
+    bot_name = state.players |> Map.fetch!(bot_id) |> Map.fetch!(:name)
+
+    Logger.warning(
+      "bot #{bot_id} failed in room #{state.code} during #{inspect(game.phase.kind)}: #{message}"
+    )
+
+    entry =
+      Log.event(:bot_error, %{
+        actor: bot_name,
+        detail: "bot move failed: #{message}"
+      })
+
+    %{state | game: Log.push_log(game, entry)}
+  end
 end

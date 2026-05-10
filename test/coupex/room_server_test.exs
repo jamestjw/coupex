@@ -132,6 +132,80 @@ defmodule Coupex.RoomServerTest do
            end)
   end
 
+  test "bot completes exchange after proving ambassador from a failed challenge" do
+    host_id = "host-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.add_bot(code, host_id)
+
+    assert {:ok, _snapshot} = RoomServer.toggle_ready(code, host_id)
+    assert {:ok, _snapshot} = RoomServer.start_game(code, host_id)
+
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    :sys.replace_state(room_pid, fn state ->
+      pending = %{
+        actor_id: "bot-1",
+        actor_name: "Bot 1",
+        action: "exchange",
+        action_label: "Exchange",
+        claim_role: :ambassador,
+        target_id: nil,
+        target_name: nil,
+        block_roles: [],
+        block_candidates: [],
+        cost: 0
+      }
+
+      players =
+        Enum.map(state.game.players, fn
+          %{id: ^host_id} = player ->
+            %{
+              player
+              | influences: [
+                  %{role: :assassin, revealed: false},
+                  %{role: :captain, revealed: false}
+                ]
+            }
+
+          %{id: "bot-1"} = player ->
+            %{
+              player
+              | influences: [
+                  %{role: :ambassador, revealed: false},
+                  %{role: :contessa, revealed: false}
+                ]
+            }
+        end)
+
+      game = %{
+        state.game
+        | active_player_id: "bot-1",
+          turn_number: 2,
+          deck: [:duke, :captain, :assassin],
+          players: players,
+          phase: %{
+            kind: :awaiting_reveal,
+            player_id: host_id,
+            reason: "Your challenge failed. Reveal one influence.",
+            continuation: %{type: :continue_after_failed_action_challenge, pending: pending}
+          }
+      }
+
+      %{state | game: game}
+    end)
+
+    assert {:ok, snapshot} = RoomServer.reveal(code, host_id, 0)
+
+    assert snapshot.game.interaction.kind == :action
+    assert snapshot.game.active_player_id == host_id
+
+    assert Enum.any?(snapshot.game.log, fn entry ->
+             entry.kind == :exchange and entry.actor == "Bot 1" and
+               entry.detail == "rearranged the court"
+           end)
+  end
+
   defp mark_finished!(code) do
     room_pid = GenServer.whereis(RoomServer.via(code))
 
