@@ -78,7 +78,12 @@ defmodule CoupexWeb.RoomLiveTest do
     |> render_click()
 
     assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
-    assert snapshot.game.interaction.kind != :respond_action
+
+    if snapshot.game.interaction.kind == :respond_action do
+      refute "bot-1" in snapshot.game.interaction.waiting_on_ids
+      refute "bot-2" in snapshot.game.interaction.waiting_on_ids
+      refute "bot-3" in snapshot.game.interaction.waiting_on_ids
+    end
   end
 
   test "claimed action shows challenge modal for other players", %{conn: conn} do

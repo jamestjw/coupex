@@ -104,6 +104,34 @@ defmodule Coupex.RoomServerTest do
     assert restarted.game.status == :active
   end
 
+  test "rematch restart advances immediately when a bot acts first" do
+    host_id = "host-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.add_bot(code, host_id)
+
+    assert {:ok, _snapshot} = RoomServer.toggle_ready(code, host_id)
+    assert {:ok, _snapshot} = RoomServer.start_game(code, host_id)
+
+    mark_finished!(code)
+
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    :sys.replace_state(room_pid, fn state ->
+      state = %{state | order: ["bot-1", host_id]}
+      state = put_in(state.players[host_id].ready, true)
+      %{state | host_id: "bot-1", game: %{state.game | active_player_id: "bot-1"}}
+    end)
+
+    assert {:ok, restarted} = RoomServer.restart_game(code, "bot-1")
+
+    assert restarted.game.status == :active
+
+    assert Enum.any?(restarted.game.log, fn entry ->
+             entry.kind == :action and entry.actor == "Bot 1"
+           end)
+  end
+
   defp mark_finished!(code) do
     room_pid = GenServer.whereis(RoomServer.via(code))
 

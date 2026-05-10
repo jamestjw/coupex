@@ -233,9 +233,24 @@ defmodule Coupex.GameTest do
     game =
       base_game(%{}, %{})
       |> Map.put(:players, [
-        %{id: "p1", name: "Isolde", coins: 2, influences: [%{role: :duke, revealed: false}, %{role: :contessa, revealed: false}]},
-        %{id: "p2", name: "Magnus", coins: 2, influences: [%{role: :captain, revealed: false}, %{role: :assassin, revealed: false}]},
-        %{id: "p3", name: "Livia", coins: 2, influences: [%{role: :ambassador, revealed: false}, %{role: :contessa, revealed: false}]}
+        %{
+          id: "p1",
+          name: "Isolde",
+          coins: 2,
+          influences: [%{role: :duke, revealed: false}, %{role: :contessa, revealed: false}]
+        },
+        %{
+          id: "p2",
+          name: "Magnus",
+          coins: 2,
+          influences: [%{role: :captain, revealed: false}, %{role: :assassin, revealed: false}]
+        },
+        %{
+          id: "p3",
+          name: "Livia",
+          coins: 2,
+          influences: [%{role: :ambassador, revealed: false}, %{role: :contessa, revealed: false}]
+        }
       ])
       |> Map.put(:phase, %{
         kind: :awaiting_action_responses,
@@ -362,6 +377,126 @@ defmodule Coupex.GameTest do
            end)
   end
 
+  test "awaiting state exposes active player actions" do
+    game = base_game(%{}, %{})
+
+    assert Game.awaiting(game) == %{
+             kind: :action,
+             actor_ids: ["p1"],
+             required?: true,
+             actions: [:take_action],
+             subject: nil
+           }
+
+    assert Game.actors_waiting(game) == ["p1"]
+    assert Game.actor_waiting?(game, "p1")
+    refute Game.actor_waiting?(game, "p2")
+    assert Game.legal_reactions(game, "p1") == [:take_action]
+    assert Game.legal_reactions(game, "p2") == []
+  end
+
+  test "awaiting state excludes response players who already passed" do
+    game =
+      base_three_player_game(%{}, %{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_action_responses,
+        pending: pending_action("tax", :duke),
+        eligible_ids: ["p2", "p3"],
+        passed_ids: MapSet.new(["p2"])
+      })
+
+    awaiting = Game.awaiting(game)
+
+    assert awaiting.kind == :action_response
+    assert awaiting.actor_ids == ["p3"]
+    refute awaiting.required?
+    assert awaiting.actions == [:pass, :challenge]
+    assert awaiting.subject.action == "tax"
+    assert Game.legal_reactions(game, "p2") == []
+    assert Game.legal_reactions(game, "p3") == [:pass, :challenge]
+  end
+
+  test "awaiting state exposes block responders" do
+    pending = pending_action("foreign_aid", nil, [:duke])
+
+    game =
+      base_three_player_game(%{}, %{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_block,
+        pending: pending,
+        eligible_ids: ["p2", "p3"],
+        passed_ids: MapSet.new(["p3"])
+      })
+
+    assert Game.awaiting(game) == %{
+             kind: :block,
+             actor_ids: ["p2"],
+             required?: false,
+             actions: [:pass, :block],
+             subject: pending
+           }
+  end
+
+  test "awaiting state exposes challenge responses to a block" do
+    pending = pending_action("steal", :captain, [:captain, :ambassador], "p2")
+    block = %{player_id: "p2", role: :captain}
+
+    game =
+      base_three_player_game(%{}, %{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_block_challenge,
+        pending: pending,
+        block: block,
+        eligible_ids: ["p1", "p3"],
+        passed_ids: MapSet.new(["p1"])
+      })
+
+    assert Game.awaiting(game) == %{
+             kind: :block_response,
+             actor_ids: ["p3"],
+             required?: false,
+             actions: [:pass, :challenge],
+             subject: %{pending: pending, block: block}
+           }
+  end
+
+  test "awaiting state exposes required reveal and exchange actors" do
+    reveal_game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_reveal,
+        player_id: "p2",
+        reason: "Reveal one influence.",
+        continuation: %{type: :advance_turn}
+      })
+
+    assert Game.awaiting(reveal_game) == %{
+             kind: :reveal,
+             actor_ids: ["p2"],
+             required?: true,
+             actions: [:reveal],
+             subject: %{reason: "Reveal one influence."}
+           }
+
+    exchange_game =
+      base_game(%{}, %{})
+      |> Map.put(:phase, %{
+        kind: :awaiting_exchange,
+        player_id: "p1",
+        options: [:duke, :captain, :assassin, :contessa],
+        keep_count: 2,
+        deck_rest: [:ambassador]
+      })
+
+    assert Game.awaiting(exchange_game) == %{
+             kind: :exchange,
+             actor_ids: ["p1"],
+             required?: true,
+             actions: [:exchange],
+             subject: %{options: [:duke, :captain, :assassin, :contessa], keep_count: 2}
+           }
+  end
+
   test "successful challenge against a bluff block resumes and resolves original action" do
     game =
       base_three_player_game(
@@ -467,4 +602,22 @@ defmodule Coupex.GameTest do
       ]
     }
   end
+
+  defp pending_action(action, claim_role, block_roles \\ [], target_id \\ nil) do
+    %{
+      actor_id: "p1",
+      actor_name: "Isolde",
+      action: action,
+      action_label: action_label(action),
+      claim_role: claim_role,
+      target_id: target_id,
+      target_name: if(target_id, do: "Magnus", else: nil),
+      block_roles: block_roles,
+      block_candidates: if(target_id, do: [target_id], else: []),
+      cost: 0
+    }
+  end
+
+  defp action_label("foreign_aid"), do: "Foreign Aid"
+  defp action_label(action), do: String.capitalize(action)
 end

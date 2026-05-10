@@ -416,6 +416,77 @@ defmodule Coupex.Game do
     }
   end
 
+  def awaiting(game) do
+    case game.phase do
+      %{kind: :awaiting_action} ->
+        %{
+          kind: :action,
+          actor_ids: [game.active_player_id],
+          required?: true,
+          actions: [:take_action],
+          subject: nil
+        }
+
+      %{kind: :awaiting_action_responses, pending: pending} = phase ->
+        %{
+          kind: :action_response,
+          actor_ids: remaining_eligible_ids(phase),
+          required?: false,
+          actions: [:pass, :challenge],
+          subject: pending
+        }
+
+      %{kind: :awaiting_block, pending: pending} = phase ->
+        %{
+          kind: :block,
+          actor_ids: remaining_eligible_ids(phase),
+          required?: false,
+          actions: [:pass, :block],
+          subject: pending
+        }
+
+      %{kind: :awaiting_block_challenge, pending: pending, block: block} = phase ->
+        %{
+          kind: :block_response,
+          actor_ids: remaining_eligible_ids(phase),
+          required?: false,
+          actions: [:pass, :challenge],
+          subject: %{pending: pending, block: block}
+        }
+
+      %{kind: :awaiting_reveal, player_id: player_id, reason: reason} ->
+        %{
+          kind: :reveal,
+          actor_ids: [player_id],
+          required?: true,
+          actions: [:reveal],
+          subject: %{reason: reason}
+        }
+
+      %{kind: :awaiting_exchange, player_id: player_id, options: options, keep_count: keep_count} ->
+        %{
+          kind: :exchange,
+          actor_ids: [player_id],
+          required?: true,
+          actions: [:exchange],
+          subject: %{options: options, keep_count: keep_count}
+        }
+
+      %{kind: :game_over} ->
+        %{kind: :none, actor_ids: [], required?: false, actions: [], subject: nil}
+    end
+  end
+
+  def actors_waiting(game), do: awaiting(game).actor_ids
+
+  def actor_waiting?(game, player_id), do: player_id in actors_waiting(game)
+
+  def legal_reactions(game, player_id) do
+    awaiting = awaiting(game)
+
+    if player_id in awaiting.actor_ids, do: awaiting.actions, else: []
+  end
+
   defp interaction(game, viewer_id) do
     case game.phase do
       %{kind: :awaiting_action} ->
@@ -445,6 +516,7 @@ defmodule Coupex.Game do
           can_challenge: can_respond,
           can_pass: can_respond,
           awaiting_others: awaiting_others,
+          waiting_on_ids: pending_responder_ids,
           waiting_on_name:
             case pending_responder_ids do
               [single_player_id] -> player_name(game, single_player_id)
@@ -479,6 +551,7 @@ defmodule Coupex.Game do
           block_role_ids: Enum.map(block_roles, &Atom.to_string/1),
           can_pass: can_respond,
           awaiting_others: awaiting_others,
+          waiting_on_ids: pending_responder_ids,
           waiting_on_name:
             case pending_responder_ids do
               [single_player_id] -> player_name(game, single_player_id)
@@ -516,6 +589,7 @@ defmodule Coupex.Game do
           can_challenge: can_respond,
           can_pass: can_respond,
           awaiting_others: awaiting_others,
+          waiting_on_ids: pending_responder_ids,
           waiting_on_name:
             case pending_responder_ids do
               [single_player_id] -> player_name(game, single_player_id)
@@ -617,7 +691,9 @@ defmodule Coupex.Game do
 
       :continue_after_failed_action_challenge ->
         pending = continuation.pending
-        {:ok, after_resolution(resolve_action(%{game | phase: %{kind: :awaiting_action}}, pending))}
+
+        {:ok,
+         after_resolution(resolve_action(%{game | phase: %{kind: :awaiting_action}}, pending))}
 
       :cancel_after_successful_action_challenge ->
         {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}
@@ -911,6 +987,10 @@ defmodule Coupex.Game do
       target_name: pending.target_name,
       block_roles: Enum.map(pending.block_roles, &Log.role_label/1)
     }
+  end
+
+  defp remaining_eligible_ids(%{eligible_ids: eligible_ids, passed_ids: passed_ids}) do
+    Enum.reject(eligible_ids, &MapSet.member?(passed_ids, &1))
   end
 
   defp build_deck, do: Enum.flat_map(@roles, &List.duplicate(&1, 3))

@@ -263,14 +263,17 @@ defmodule Coupex.RoomServer do
          :ok <- ensure_rematch_host(rematch_host_id, player_id),
          {:ok, connected_ids} <- ensure_connected_player_count(state),
          :ok <- ensure_connected_rematch_ready(state, rematch_host_id, connected_ids),
-         play_order = Enum.shuffle(connected_ids),
-         {:ok, game} <- Game.new(starting_players(state, play_order)) do
+         play_order = rematch_play_order(state, rematch_host_id, connected_ids),
+         next_state =
+           state
+           |> prune_to_players(play_order)
+           |> Map.put(:host_id, rematch_host_id),
+         {:ok, game} <- Game.new(starting_players(next_state)) do
       next_state =
-        state
-        |> prune_to_players(play_order)
-        |> Map.put(:host_id, rematch_host_id)
+        next_state
         |> Map.put(:game, game)
         |> Map.update!(:players, &reset_ready/1)
+        |> run_bot_turns()
 
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
@@ -524,6 +527,25 @@ defmodule Coupex.RoomServer do
     end
   end
 
+  defp rematch_play_order(state, rematch_host_id, connected_ids) do
+    connected_set = MapSet.new(connected_ids)
+
+    ordered_connected_ids =
+      Enum.filter(state.order, fn player_id -> MapSet.member?(connected_set, player_id) end)
+
+    case ordered_connected_ids do
+      [] -> Enum.shuffle(connected_ids)
+      ids -> rotate_to(ids, rematch_host_id)
+    end
+  end
+
+  defp rotate_to(ids, player_id) do
+    case Enum.split_while(ids, &(&1 != player_id)) do
+      {_before, []} -> ids
+      {before, after_and_player} -> after_and_player ++ before
+    end
+  end
+
   defp prune_to_players(state, player_ids) do
     players = Map.take(state.players, player_ids)
     host_id = if state.host_id in player_ids, do: state.host_id, else: List.first(player_ids)
@@ -686,62 +708,10 @@ defmodule Coupex.RoomServer do
 
   defp run_bot_turns(state, _depth), do: state
 
-  defp bot_actor_id(
-         %{game: %{phase: %{kind: :awaiting_action}, active_player_id: player_id}} = state
-       ) do
-    if bot_player?(state, player_id), do: player_id, else: nil
-  end
-
-  defp bot_actor_id(
-         %{
-           game: %{
-             phase: %{
-               kind: :awaiting_action_responses,
-               eligible_ids: eligible_ids,
-               passed_ids: passed_ids
-             }
-           }
-         } = state
-   ) do
-    eligible_ids
-    |> Enum.reject(&MapSet.member?(passed_ids, &1))
+  defp bot_actor_id(%{game: game} = state) do
+    game
+    |> Game.actors_waiting()
     |> Enum.find(&bot_player?(state, &1))
-  end
-
-  defp bot_actor_id(
-         %{
-           game: %{
-             phase: %{kind: :awaiting_block, eligible_ids: eligible_ids, passed_ids: passed_ids}
-           }
-         } = state
-   ) do
-    eligible_ids
-    |> Enum.reject(&MapSet.member?(passed_ids, &1))
-    |> Enum.find(&bot_player?(state, &1))
-  end
-
-  defp bot_actor_id(
-         %{
-           game: %{
-             phase: %{
-               kind: :awaiting_block_challenge,
-               eligible_ids: eligible_ids,
-               passed_ids: passed_ids
-             }
-           }
-         } = state
-   ) do
-    eligible_ids
-    |> Enum.reject(&MapSet.member?(passed_ids, &1))
-    |> Enum.find(&bot_player?(state, &1))
-  end
-
-  defp bot_actor_id(%{game: %{phase: %{kind: :awaiting_reveal, player_id: player_id}}} = state) do
-    if bot_player?(state, player_id), do: player_id, else: nil
-  end
-
-  defp bot_actor_id(%{game: %{phase: %{kind: :awaiting_exchange, player_id: player_id}}} = state) do
-    if bot_player?(state, player_id), do: player_id, else: nil
   end
 
   defp bot_actor_id(_game), do: nil
