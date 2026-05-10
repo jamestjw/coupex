@@ -2,7 +2,27 @@ defmodule Coupex.BotTest do
   use ExUnit.Case, async: true
 
   alias Coupex.Bot
+  alias Coupex.Bot.Native
   alias Coupex.Game
+
+  test "native rusty-duke chooser returns a move" do
+    payload = %{
+      strategy: "heuristic",
+      profile: "balanced",
+      seed: 1,
+      viewer: 0,
+      deck_size: 11,
+      own_hidden_cards: ["duke", "contessa"],
+      players: [
+        %{coins: 2, hidden_influence: 2, revealed: [], alive: true},
+        %{coins: 2, hidden_influence: 2, revealed: [], alive: true}
+      ],
+      phase: %{kind: "action", actor: 0}
+    }
+
+    assert {:ok, encoded_move} = payload |> Jason.encode!() |> Native.choose_move()
+    assert {:ok, %{"kind" => "take_action"}} = Jason.decode(encoded_move)
+  end
 
   test "chooses tax when holding duke" do
     {:ok, game} =

@@ -1,8 +1,15 @@
 FROM hexpm/elixir:1.18.4-erlang-25.3.2.7-debian-bookworm-20260421-slim AS build
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential git ca-certificates && \
+    apt-get install -y --no-install-recommends build-essential git ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --profile minimal --default-toolchain stable
 
 WORKDIR /app
 
@@ -17,6 +24,7 @@ RUN mix deps.get --only prod
 RUN mix deps.compile
 
 COPY lib lib
+COPY native native
 COPY priv priv
 COPY assets assets
 
