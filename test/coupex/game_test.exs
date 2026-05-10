@@ -348,6 +348,36 @@ defmodule Coupex.GameTest do
     assert updated.turn_number == 2
   end
 
+  test "failed assassinate challenge still lets the living target block with contessa" do
+    game =
+      base_three_player_game(
+        %{
+          coins: 3,
+          influences: [%{role: :assassin, revealed: false}, %{role: :duke, revealed: false}]
+        },
+        %{influences: [%{role: :contessa, revealed: false}, %{role: :captain, revealed: false}]},
+        %{influences: [%{role: :duke, revealed: false}, %{role: :captain, revealed: false}]}
+      )
+
+    assert {:ok, game} = Game.declare_action(game, "p1", "assassinate", "p2")
+    assert {:ok, game} = Game.challenge(game, "p3")
+    assert game.phase.kind == :awaiting_reveal
+    assert game.phase.player_id == "p3"
+
+    assert {:ok, updated} = Game.reveal_influence(game, "p3", 0)
+
+    assert updated.phase.kind == :awaiting_block
+    assert updated.phase.eligible_ids == ["p2"]
+    assert updated.phase.pending.action == "assassinate"
+    assert updated.phase.pending.block_roles == [:contessa]
+
+    interaction = Game.view(updated, "p2").interaction
+    assert interaction.kind == :block
+    assert interaction.block_roles == ["Contessa"]
+    assert interaction.block_role_ids == ["contessa"]
+    assert interaction.can_pass
+  end
+
   test "failed challenge against a truthful block makes challenger reveal and block stands" do
     game =
       base_three_player_game(
