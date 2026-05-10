@@ -40,7 +40,10 @@ defmodule Coupex.Game.Phase.AwaitingExchange do
     if phase.player_id == player_id do
       indexes = Enum.uniq(indexes)
 
-      with :ok <- Validation.ensure_exchange_indexes(options, indexes, keep_count) do
+      with :ok <-
+             Validation.validate(game, player_id, [
+               {:exchange_indexes, options, indexes, keep_count}
+             ]) do
         kept = Enum.map(indexes, &Enum.at(options, &1))
         returned = Coupex.Game.list_difference(options, kept)
 

@@ -3,6 +3,36 @@ defmodule Coupex.Game.Validation do
 
   alias Coupex.Game.Player
 
+  def validate(game, actor_id, checks) do
+    Enum.reduce_while(checks, :ok, fn check, :ok ->
+      case run_check(game, actor_id, check) do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp run_check(game, _actor_id, :active), do: ensure_active(game)
+  defp run_check(game, actor_id, :turn), do: ensure_turn(game, actor_id)
+  defp run_check(game, _actor_id, {:phase, kind}), do: ensure_phase(game, kind)
+
+  defp run_check(game, actor_id, {:action_allowed, spec}),
+    do: ensure_action_allowed(game, actor_id, spec)
+
+  defp run_check(game, actor_id, {:target, spec, target_id}),
+    do: ensure_target(game, actor_id, spec, target_id)
+
+  defp run_check(_game, actor_id, {:member, list}), do: ensure_member(list, actor_id)
+
+  defp run_check(_game, _actor_id, {:block_role, action, role}),
+    do: ensure_block_role(action, role)
+
+  defp run_check(game, actor_id, {:reveal_index, index}),
+    do: ensure_reveal_index(game, actor_id, index)
+
+  defp run_check(_game, _actor_id, {:exchange_indexes, options, indexes, keep_count}),
+    do: ensure_exchange_indexes(options, indexes, keep_count)
+
   def ensure_active(%{status: :active}), do: :ok
   def ensure_active(_game), do: {:error, "The game is over."}
 
@@ -56,8 +86,13 @@ defmodule Coupex.Game.Validation do
     if player_id in list, do: :ok, else: {:error, "You cannot respond here."}
   end
 
-  def ensure_block_role(action, role) when is_binary(role),
-    do: ensure_block_role(action, String.to_existing_atom(role))
+  def ensure_block_role(action, role) when is_binary(role) do
+    try do
+      ensure_block_role(action, String.to_existing_atom(role))
+    rescue
+      ArgumentError -> {:error, "That role cannot block this action."}
+    end
+  end
 
   def ensure_block_role(action, role) do
     if role in block_roles(action),

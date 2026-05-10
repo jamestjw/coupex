@@ -34,7 +34,7 @@ defmodule Coupex.Game.Phase.AwaitingReveal do
     continuation = phase.continuation
 
     if phase.player_id == player_id do
-      with :ok <- Validation.ensure_reveal_index(game, player_id, index) do
+      with :ok <- Validation.validate(game, player_id, [{:reveal_index, index}]) do
         game = Coupex.Game.reveal_player_influence(game, player_id, index)
         game = Coupex.Game.check_winner(game)
 

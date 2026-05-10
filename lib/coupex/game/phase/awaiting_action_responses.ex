@@ -54,7 +54,7 @@ defmodule Coupex.Game.Phase.AwaitingActionResponses do
     eligible_ids = phase.eligible_ids
     pending = phase.pending
 
-    with :ok <- Validation.ensure_member(eligible_ids, player_id) do
+    with :ok <- Validation.validate(game, player_id, [{:member, eligible_ids}]) do
       game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
 
       if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
@@ -70,7 +70,7 @@ defmodule Coupex.Game.Phase.AwaitingActionResponses do
     eligible_ids = phase.eligible_ids
     pending = phase.pending
 
-    with :ok <- Validation.ensure_member(eligible_ids, challenger_id) do
+    with :ok <- Validation.validate(game, challenger_id, [{:member, eligible_ids}]) do
       Coupex.Game.resolve_challenge(game, challenger_id, pending.actor_id, pending.claim_role, %{
         success: %{type: :continue_after_failed_action_challenge, pending: pending},
         failure: %{type: :cancel_after_successful_action_challenge}

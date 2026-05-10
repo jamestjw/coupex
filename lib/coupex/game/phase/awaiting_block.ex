@@ -58,7 +58,7 @@ defmodule Coupex.Game.Phase.AwaitingBlock do
     eligible_ids = phase.eligible_ids
     pending = phase.pending
 
-    with :ok <- Validation.ensure_member(eligible_ids, player_id) do
+    with :ok <- Validation.validate(game, player_id, [{:member, eligible_ids}]) do
       game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
 
       if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
@@ -74,8 +74,11 @@ defmodule Coupex.Game.Phase.AwaitingBlock do
     pending = phase.pending
     eligible_ids = phase.eligible_ids
 
-    with :ok <- Validation.ensure_member(eligible_ids, blocker_id),
-         :ok <- Validation.ensure_block_role(pending.action, role) do
+    with :ok <-
+           Validation.validate(game, blocker_id, [
+             {:member, eligible_ids},
+             {:block_role, pending.action, role}
+           ]) do
       block = %{player_id: blocker_id, role: role}
 
       game =

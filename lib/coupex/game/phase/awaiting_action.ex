@@ -21,12 +21,15 @@ defmodule Coupex.Game.Phase.AwaitingAction do
   end
 
   def handle_action(game, actor_id, action_id, target_id) do
-    with :ok <- Validation.ensure_active(game),
-         :ok <- Validation.ensure_turn(game, actor_id),
-         :ok <- Validation.ensure_phase(game, :awaiting_action),
-         {:ok, spec} <- Coupex.Game.fetch_action(action_id),
-         :ok <- Validation.ensure_action_allowed(game, actor_id, spec),
-         :ok <- Validation.ensure_target(game, actor_id, spec, target_id) do
+    with {:ok, spec} <- Coupex.Game.fetch_action(action_id),
+         :ok <-
+           Validation.validate(game, actor_id, [
+             :active,
+             :turn,
+             {:phase, :awaiting_action},
+             {:action_allowed, spec},
+             {:target, spec, target_id}
+           ]) do
       pending = %{
         actor_id: actor_id,
         actor_name: Coupex.Game.player_name(game, actor_id),
