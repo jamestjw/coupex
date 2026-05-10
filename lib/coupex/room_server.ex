@@ -13,7 +13,8 @@ defmodule Coupex.RoomServer do
           required(:id) => player_id(),
           required(:name) => String.t(),
           required(:ready) => boolean(),
-          required(:host) => boolean()
+          required(:host) => boolean(),
+          required(:bot) => boolean()
         }
   @type rematch :: %{
           optional(:winner_id) => player_id() | nil,
@@ -36,8 +37,9 @@ defmodule Coupex.RoomServer do
           required(:id) => player_id(),
           required(:name) => String.t(),
           required(:ready) => boolean(),
-          required(:monitor_ref) => reference(),
-          required(:pid) => pid()
+          required(:bot) => boolean(),
+          required(:monitor_ref) => reference() | nil,
+          required(:pid) => pid() | nil
         }
 
   @type room :: %{
@@ -110,6 +112,13 @@ defmodule Coupex.RoomServer do
 
   @spec start_game(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def start_game(code, player_id), do: GenServer.call(via(code), {:start_game, player_id})
+
+  @spec add_bot(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
+  def add_bot(code, player_id), do: GenServer.call(via(code), {:add_bot, player_id})
+
+  @spec remove_bot(String.t(), player_id(), player_id()) :: {:ok, view()} | {:error, String.t()}
+  def remove_bot(code, player_id, bot_id),
+    do: GenServer.call(via(code), {:remove_bot, player_id, bot_id})
 
   @spec toggle_rematch_ready(String.t(), player_id()) :: {:ok, view()} | {:error, String.t()}
   def toggle_rematch_ready(code, player_id),
@@ -200,7 +209,32 @@ defmodule Coupex.RoomServer do
          :ok <- ensure_player_count(state),
          :ok <- ensure_all_ready(state),
          {:ok, game} <- Game.new(starting_players(state)) do
-      next_state = %{state | game: game, players: reset_ready(state.players)}
+      next_state = %{state | game: game, players: reset_ready(state.players)} |> run_bot_turns()
+      broadcast(next_state)
+      {:reply, {:ok, view(next_state, player_id)}, next_state}
+    else
+      {:error, message} -> {:reply, {:error, message}, state}
+    end
+  end
+
+  def handle_call({:add_bot, player_id}, _from, state) do
+    with :ok <- ensure_host(state, player_id),
+         :ok <- ensure_waiting(state),
+         :ok <- ensure_room_has_space(state) do
+      next_state = upsert_bot(state) |> run_bot_turns()
+      broadcast(next_state)
+      {:reply, {:ok, view(next_state, player_id)}, next_state}
+    else
+      {:error, message} -> {:reply, {:error, message}, state}
+    end
+  end
+
+  def handle_call({:remove_bot, player_id, bot_id}, _from, state) do
+    with :ok <- ensure_host(state, player_id),
+         :ok <- ensure_waiting(state),
+         {:ok, _player} <- fetch_room_player(state, bot_id),
+         :ok <- ensure_bot_player(state, bot_id) do
+      next_state = remove_player(state, bot_id)
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -299,7 +333,7 @@ defmodule Coupex.RoomServer do
     with {:ok, _player} <- fetch_room_player(state, player_id),
          %{} = game <- state.game,
          {:ok, updated_game} <- fun.(game) do
-      next_state = %{state | game: updated_game}
+      next_state = %{state | game: updated_game} |> run_bot_turns()
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -317,7 +351,8 @@ defmodule Coupex.RoomServer do
           id: player.id,
           name: player.name,
           ready: player.ready,
-          host: player.id == state.host_id
+          host: player.id == state.host_id,
+          bot: player.bot
         }
       end)
 
@@ -371,6 +406,7 @@ defmodule Coupex.RoomServer do
       id: player_id,
       name: choose_name(name, existing),
       ready: if(existing, do: existing.ready, else: false),
+      bot: false,
       monitor_ref: ref,
       pid: pid
     }
@@ -392,7 +428,7 @@ defmodule Coupex.RoomServer do
   end
 
   defp reset_ready(players) do
-    Map.new(players, fn {id, player} -> {id, %{player | ready: false}} end)
+    Map.new(players, fn {id, player} -> {id, %{player | ready: player.bot}} end)
   end
 
   defp fetch_room_player(state, player_id) do
@@ -429,6 +465,7 @@ defmodule Coupex.RoomServer do
   defp ensure_finished(_state), do: {:error, "The game is still in progress."}
 
   defp ensure_connected_player(%{pid: pid}) when is_pid(pid), do: :ok
+  defp ensure_connected_player(%{bot: true}), do: :ok
   defp ensure_connected_player(_player), do: {:error, "Reconnect before joining a rematch."}
 
   defp ensure_not_rematch_host(state, player_id) do
@@ -474,6 +511,7 @@ defmodule Coupex.RoomServer do
   end
 
   defp connected_player?(%{pid: pid}) when is_pid(pid), do: true
+  defp connected_player?(%{bot: true}), do: true
   defp connected_player?(_player), do: false
 
   defp rematch_host_id(state) do
@@ -505,7 +543,8 @@ defmodule Coupex.RoomServer do
           id: player.id,
           name: player.name,
           ready: player_id == host_id or player.ready,
-          host: player_id == host_id
+          host: player_id == host_id,
+          bot: player.bot
         }
       end)
 
@@ -580,4 +619,167 @@ defmodule Coupex.RoomServer do
   defp choose_name(nil, nil), do: "Player"
   defp choose_name(name, nil), do: name
   defp choose_name(_name, existing), do: existing.name
+
+  defp ensure_room_has_space(state) do
+    if map_size(state.players) < @max_players,
+      do: :ok,
+      else: {:error, "That room is already full."}
+  end
+
+  defp ensure_bot_player(state, bot_id) do
+    with {:ok, player} <- fetch_room_player(state, bot_id) do
+      if player.bot, do: :ok, else: {:error, "That seat is not a bot."}
+    end
+  end
+
+  defp upsert_bot(state) do
+    bot_index = next_bot_index(state)
+    bot_id = "bot-#{bot_index}"
+
+    player = %{
+      id: bot_id,
+      name: "Bot #{bot_index}",
+      ready: true,
+      bot: true,
+      monitor_ref: nil,
+      pid: nil
+    }
+
+    players = Map.put(state.players, bot_id, player)
+    order = state.order ++ [bot_id]
+
+    %{state | players: players, order: order}
+  end
+
+  defp next_bot_index(state) do
+    state.players
+    |> Map.keys()
+    |> Enum.map(fn id ->
+      case Regex.run(~r/^bot-(\d+)$/, id) do
+        [_, number] -> String.to_integer(number)
+        _ -> 0
+      end
+    end)
+    |> Enum.max(fn -> 0 end)
+    |> Kernel.+(1)
+  end
+
+  defp run_bot_turns(%{game: nil} = state), do: state
+  defp run_bot_turns(%{game: %{status: :finished}} = state), do: state
+
+  defp run_bot_turns(state) do
+    run_bot_turns(state, 0)
+  end
+
+  defp run_bot_turns(state, depth) when depth < 32 do
+    case bot_actor_id(state) do
+      nil ->
+        state
+
+      bot_id ->
+        case play_bot_turn(state, bot_id) do
+          {:ok, next_state} -> run_bot_turns(next_state, depth + 1)
+          {:error, _message} -> state
+        end
+    end
+  end
+
+  defp run_bot_turns(state, _depth), do: state
+
+  defp bot_actor_id(
+         %{game: %{phase: %{kind: :awaiting_action}, active_player_id: player_id}} = state
+       ) do
+    if bot_player?(state, player_id), do: player_id, else: nil
+  end
+
+  defp bot_actor_id(
+         %{
+           game: %{
+             phase: %{
+               kind: :awaiting_action_responses,
+               eligible_ids: eligible_ids,
+               passed_ids: passed_ids
+             }
+           }
+         } = state
+   ) do
+    eligible_ids
+    |> Enum.reject(&MapSet.member?(passed_ids, &1))
+    |> Enum.find(&bot_player?(state, &1))
+  end
+
+  defp bot_actor_id(
+         %{
+           game: %{
+             phase: %{kind: :awaiting_block, eligible_ids: eligible_ids, passed_ids: passed_ids}
+           }
+         } = state
+   ) do
+    eligible_ids
+    |> Enum.reject(&MapSet.member?(passed_ids, &1))
+    |> Enum.find(&bot_player?(state, &1))
+  end
+
+  defp bot_actor_id(
+         %{
+           game: %{
+             phase: %{
+               kind: :awaiting_block_challenge,
+               eligible_ids: eligible_ids,
+               passed_ids: passed_ids
+             }
+           }
+         } = state
+   ) do
+    eligible_ids
+    |> Enum.reject(&MapSet.member?(passed_ids, &1))
+    |> Enum.find(&bot_player?(state, &1))
+  end
+
+  defp bot_actor_id(%{game: %{phase: %{kind: :awaiting_reveal, player_id: player_id}}} = state) do
+    if bot_player?(state, player_id), do: player_id, else: nil
+  end
+
+  defp bot_actor_id(%{game: %{phase: %{kind: :awaiting_exchange, player_id: player_id}}} = state) do
+    if bot_player?(state, player_id), do: player_id, else: nil
+  end
+
+  defp bot_actor_id(_game), do: nil
+
+  defp bot_player?(state, player_id) do
+    case Map.get(state.players, player_id) do
+      %{bot: true} -> true
+      _ -> false
+    end
+  end
+
+  defp play_bot_turn(%{game: game} = state, bot_id) do
+    view = Game.view(game, bot_id)
+
+    case Coupex.Bot.choose_move(view, game, bot_id) do
+      {:take_action, action_id, target_id} ->
+        update_game(state, Game.declare_action(game, bot_id, action_id, target_id))
+
+      {:pass} ->
+        update_game(state, Game.pass(game, bot_id))
+
+      {:challenge} ->
+        update_game(state, Game.challenge(game, bot_id))
+
+      {:block, role} ->
+        update_game(state, Game.block(game, bot_id, role))
+
+      {:reveal, index} ->
+        update_game(state, Game.reveal_influence(game, bot_id, index))
+
+      {:exchange, indexes} ->
+        update_game(state, Game.choose_exchange(game, bot_id, indexes))
+
+      nil ->
+        {:error, "Bot had no legal move."}
+    end
+  end
+
+  defp update_game(state, {:ok, game}), do: {:ok, %{state | game: game}}
+  defp update_game(_state, {:error, message}), do: {:error, message}
 end

@@ -229,6 +229,40 @@ defmodule Coupex.GameTest do
     assert updated.winner_id == "p2"
   end
 
+  test "a successful challenge resolves the claim without reopening it" do
+    game =
+      base_game(%{}, %{})
+      |> Map.put(:players, [
+        %{id: "p1", name: "Isolde", coins: 2, influences: [%{role: :duke, revealed: false}, %{role: :contessa, revealed: false}]},
+        %{id: "p2", name: "Magnus", coins: 2, influences: [%{role: :captain, revealed: false}, %{role: :assassin, revealed: false}]},
+        %{id: "p3", name: "Livia", coins: 2, influences: [%{role: :ambassador, revealed: false}, %{role: :contessa, revealed: false}]}
+      ])
+      |> Map.put(:phase, %{
+        kind: :awaiting_action_responses,
+        pending: %{
+          actor_id: "p1",
+          actor_name: "Isolde",
+          action: "tax",
+          action_label: "Tax",
+          claim_role: :duke,
+          target_id: nil,
+          target_name: nil,
+          block_roles: [],
+          block_candidates: [],
+          cost: 0
+        },
+        eligible_ids: ["p2", "p3"],
+        passed_ids: MapSet.new()
+      })
+
+    assert {:ok, updated} = Game.challenge(game, "p2")
+    assert {:ok, updated} = Game.reveal_influence(updated, "p2", 0)
+
+    assert updated.phase.kind == :awaiting_action
+    assert updated.active_player_id == "p2"
+    assert updated.turn_number == 2
+  end
+
   test "failed challenge logs replacement influence exchange" do
     game =
       base_game(%{}, %{})

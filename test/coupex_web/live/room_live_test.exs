@@ -33,6 +33,54 @@ defmodule CoupexWeb.RoomLiveTest do
     assert has_element?(guest_view, ".table-stage")
   end
 
+  test "host can add a bot seat before starting", %{conn: conn} do
+    host_id = "host-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    host_view |> element("button[phx-click='add_bot']") |> render_click()
+
+    assert has_element?(host_view, ".lobby-row strong", "Bot 1")
+    assert has_element?(host_view, ".lobby-status", "Bot")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    assert has_element?(host_view, ".table-stage")
+
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
+    assert Enum.any?(snapshot.game.players, &(&1.name == "Bot 1"))
+  end
+
+  test "bots respond automatically after a player action", %{conn: conn} do
+    host_id = "host-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    {:ok, _} = RoomServer.add_bot(code, host_id)
+    {:ok, _} = RoomServer.add_bot(code, host_id)
+    {:ok, _} = RoomServer.add_bot(code, host_id)
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    host_view
+    |> element("button[phx-click='take_action'][phx-value-action='tax']")
+    |> render_click()
+
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
+    assert snapshot.game.interaction.kind != :respond_action
+  end
+
   test "claimed action shows challenge modal for other players", %{conn: conn} do
     host_id = "host-player"
     guest_id = "guest-player"
@@ -201,6 +249,9 @@ defmodule CoupexWeb.RoomLiveTest do
     guest_proxy_ref = Process.monitor(guest_proxy_pid)
     Phoenix.LiveViewTest.ClientProxy.stop(guest_proxy_pid, {:shutdown, :duplicate_topic})
     assert_receive {:DOWN, ^guest_proxy_ref, :process, ^guest_proxy_pid, _reason}
+
+    room_pid = GenServer.whereis(RoomServer.via(code))
+    _ = :sys.get_state(room_pid)
 
     assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
 

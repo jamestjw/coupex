@@ -617,7 +617,7 @@ defmodule Coupex.Game do
 
       :continue_after_failed_action_challenge ->
         pending = continuation.pending
-        after_action_responses(%{game | phase: %{kind: :awaiting_action}}, pending)
+        {:ok, after_resolution(resolve_action(%{game | phase: %{kind: :awaiting_action}}, pending))}
 
       :cancel_after_successful_action_challenge ->
         {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}

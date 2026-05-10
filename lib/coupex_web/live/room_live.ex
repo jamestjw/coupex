@@ -59,6 +59,12 @@ defmodule CoupexWeb.RoomLive do
   def handle_event("start_game", _, socket),
     do: room_action(socket, fn s -> RoomServer.start_game(s.code, s.viewer_id) end)
 
+  def handle_event("add_bot", _, socket),
+    do: room_action(socket, fn s -> RoomServer.add_bot(s.code, s.viewer_id) end)
+
+  def handle_event("remove_bot", %{"player-id" => player_id}, socket),
+    do: room_action(socket, fn s -> RoomServer.remove_bot(s.code, s.viewer_id, player_id) end)
+
   def handle_event("toggle_rematch_ready", _, socket),
     do: room_action(socket, fn s -> RoomServer.toggle_rematch_ready(s.code, s.viewer_id) end)
 
@@ -426,7 +432,6 @@ defmodule CoupexWeb.RoomLive do
                         :if={
                           @snapshot.game.interaction.kind == :respond_action and
                             @snapshot.game.interaction.pending.actor_id != @viewer_id and
-                            @claim_response_key == claim_key(@snapshot.game) and
                             @snapshot.game.interaction.awaiting_others
                         }
                         id="claim-response-waiting"
@@ -548,6 +553,7 @@ defmodule CoupexWeb.RoomLive do
                         <%= for player <- @snapshot.rematch.connected_players do %>
                           <span class="rematch-chip">
                             {player.name}
+                            <span :if={player.bot}>Bot</span>
                             <span>{if player.ready, do: "Ready", else: "Waiting"}</span>
                           </span>
                         <% end %>
@@ -662,7 +668,8 @@ defmodule CoupexWeb.RoomLive do
                 viewer_alive?(@snapshot.game) and
                   @snapshot.game.interaction.kind == :block and
                   @snapshot.game.interaction.pending.actor_id != @viewer_id and
-                  @claim_response_key != claim_key(@snapshot.game)
+                  (@snapshot.game.interaction.block_roles != [] or
+                     @snapshot.game.interaction.can_pass)
               }
               id="action-block-modal"
               class="drama-overlay"
@@ -740,7 +747,7 @@ defmodule CoupexWeb.RoomLive do
                 viewer_alive?(@snapshot.game) and
                   @snapshot.game.interaction.kind == :respond_action and
                   @snapshot.game.interaction.pending.actor_id != @viewer_id and
-                  @claim_response_key != claim_key(@snapshot.game)
+                  (@snapshot.game.interaction.can_challenge or @snapshot.game.interaction.can_pass)
               }
               id="claim-challenge-modal"
               class="drama-overlay"
@@ -825,7 +832,7 @@ defmodule CoupexWeb.RoomLive do
                 viewer_alive?(@snapshot.game) and
                   @snapshot.game.interaction.kind == :respond_block and
                   @snapshot.game.interaction.block.player_id != @viewer_id and
-                  @claim_response_key != claim_key(@snapshot.game)
+                  (@snapshot.game.interaction.can_challenge or @snapshot.game.interaction.can_pass)
               }
               id="block-challenge-modal"
               class="drama-overlay"
@@ -928,7 +935,20 @@ defmodule CoupexWeb.RoomLive do
                   <div>
                     <strong>{player.name}</strong>
                   </div>
-                  <span class="lobby-status">{lobby_status(player)}</span>
+                  <div class="lobby-row-actions">
+                    <span class="lobby-status">{lobby_status(player)}</span>
+                    <button
+                      :if={@snapshot.host_id == @snapshot.viewer_id and player.bot}
+                      type="button"
+                      class="lobby-remove-button"
+                      phx-click="remove_bot"
+                      phx-value-player-id={player.id}
+                      aria-label={"Remove #{player.name}"}
+                      title={"Remove #{player.name}"}
+                    >
+                      <.icon name="hero-x-mark" class="size-3" />
+                    </button>
+                  </div>
                 </div>
               <% end %>
             </div>
@@ -940,6 +960,14 @@ defmodule CoupexWeb.RoomLive do
             <div class="lobby-actions">
               <button type="button" class="court-button" phx-click="toggle_ready">
                 {if viewer_ready?(@snapshot), do: "Mark Unready", else: "Mark Ready"}
+              </button>
+              <button
+                :if={@snapshot.host_id == @snapshot.viewer_id and @snapshot.player_count < 6}
+                type="button"
+                class="court-button court-button-dark"
+                phx-click="add_bot"
+              >
+                Add Bot
               </button>
               <button
                 type="button"
@@ -1299,6 +1327,7 @@ defmodule CoupexWeb.RoomLive do
 
   defp lobby_status(player) do
     []
+    |> maybe_add(player.bot, "Bot")
     |> maybe_add(player.host, "Host")
     |> maybe_add(player.ready, "Ready")
     |> case do

@@ -439,6 +439,39 @@ body::before {
   min-width: 0;
 }
 
+.lobby-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.lobby-remove-button {
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: #b03a3a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.lobby-remove-button:hover {
+  background: rgba(184, 50, 50, 0.12);
+  color: #8d2424;
+  transform: scale(1.04);
+}
+
+.lobby-remove-button:focus-visible {
+  outline: 2px solid rgba(184, 50, 50, 0.5);
+  outline-offset: 2px;
+}
+
 .lobby-card .landing-note {
   margin-top: 1.25rem;
 }
