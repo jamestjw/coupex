@@ -61,7 +61,8 @@ defmodule Coupex.Bot do
     viewer_player = Player.fetch!(game.players, player_id)
 
     %{
-      strategy: "heuristic",
+      strategy: "ismcts",
+      iterations: 250,
       profile: "balanced",
       seed: native_seed(game, player_id),
       viewer: viewer,

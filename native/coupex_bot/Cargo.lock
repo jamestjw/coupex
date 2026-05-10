@@ -169,7 +169,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 [[package]]
 name = "rusty-duke"
 version = "0.1.0"
-source = "git+https://github.com/jamestjw/rusty-duke#b033a0d2f7c851cb7df591d8b643188b90c2ec17"
+source = "git+https://github.com/jamestjw/rusty-duke?tag=v0.1.0#0722ca6eb80babdcf1980b915d6b2bf17029582b"
 dependencies = [
  "rand",
 ]

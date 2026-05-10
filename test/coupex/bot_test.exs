@@ -91,7 +91,7 @@ defmodule Coupex.BotTest do
 
     view = Game.view(game, player_one.id)
 
-    assert {:exchange, [2]} = Bot.choose_move(view, game, player_one.id)
-    assert {:ok, _game} = Game.choose_exchange(game, player_one.id, [2])
+    assert {:exchange, indexes} = Bot.choose_move(view, game, player_one.id)
+    assert {:ok, _game} = Game.choose_exchange(game, player_one.id, indexes)
   end
 end

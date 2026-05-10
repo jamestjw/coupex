@@ -11,5 +11,5 @@ crate-type = ["cdylib"]
 [dependencies]
 rand = "0.8"
 rustler = "0.36"
-rusty-duke = { git = "https://github.com/jamestjw/rusty-duke" }
+rusty-duke = { git = "https://github.com/jamestjw/rusty-duke", tag = "v0.1.0" }
 serde_json = "1"
