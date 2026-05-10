@@ -1063,7 +1063,7 @@ defmodule CoupexWeb.RoomLive do
   defp claim_key(nil), do: nil
 
   defp claim_key(%{
-         interaction: %{kind: :block, pending: pending},
+         interaction: %{kind: :block, pending: pending} = interaction,
          turn_number: turn_number
        }) do
     [
@@ -1071,26 +1071,30 @@ defmodule CoupexWeb.RoomLive do
       pending.actor_id,
       pending.action,
       pending.target_id || "none",
+      pending.claim_role || "none",
+      waiting_on_key(interaction),
       "block"
     ]
     |> Enum.join(":")
   end
 
   defp claim_key(%{
-         interaction: %{kind: :respond_action, pending: pending},
+         interaction: %{kind: :respond_action, pending: pending} = interaction,
          turn_number: turn_number
        }) do
     [
       Integer.to_string(turn_number),
       pending.actor_id,
       pending.action,
-      pending.target_id || "none"
+      pending.target_id || "none",
+      pending.claim_role || "none",
+      waiting_on_key(interaction)
     ]
     |> Enum.join(":")
   end
 
   defp claim_key(%{
-         interaction: %{kind: :respond_block, pending: pending, block: block},
+         interaction: %{kind: :respond_block, pending: pending, block: block} = interaction,
          turn_number: turn_number
        }) do
     [
@@ -1099,12 +1103,21 @@ defmodule CoupexWeb.RoomLive do
       pending.action,
       pending.target_id || "none",
       block.player_id,
-      block.role
+      block.role,
+      waiting_on_key(interaction)
     ]
     |> Enum.join(":")
   end
 
   defp claim_key(_game), do: nil
+
+  defp waiting_on_key(%{waiting_on_ids: waiting_on_ids}) when is_list(waiting_on_ids) do
+    waiting_on_ids
+    |> Enum.sort()
+    |> Enum.join(",")
+  end
+
+  defp waiting_on_key(_interaction), do: ""
 
   defp apply_snapshot(socket, snapshot) do
     current_claim_key = claim_key(snapshot.game)

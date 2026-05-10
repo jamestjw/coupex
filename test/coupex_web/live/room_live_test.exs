@@ -121,6 +121,59 @@ defmodule CoupexWeb.RoomLiveTest do
     assert has_element?(host_view, "#claim-actor-waiting .waiting-action-chip", "Duke")
   end
 
+  test "bot exchange claim shows response modal for eligible human", %{conn: conn} do
+    host_id = "host-player"
+
+    {:ok, code} = RoomServer.create_room(host_id, "Host", self())
+    assert {:ok, _snapshot} = RoomServer.add_bot(code, host_id)
+
+    {:ok, host_view, _html} =
+      conn
+      |> init_test_session(visitor_id: host_id)
+      |> live(~p"/rooms/#{code}?name=Host")
+
+    host_view |> element("button[phx-click='toggle_ready']") |> render_click()
+    host_view |> element("button[phx-click='start_game']") |> render_click()
+
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    :sys.replace_state(room_pid, fn state ->
+      pending = %{
+        actor_id: "bot-1",
+        actor_name: "Bot 1",
+        action: "exchange",
+        action_label: "Exchange",
+        claim_role: :ambassador,
+        target_id: nil,
+        target_name: nil,
+        block_roles: [],
+        block_candidates: [],
+        cost: 0
+      }
+
+      game = %{
+        state.game
+        | active_player_id: "bot-1",
+          phase: %{
+            kind: :awaiting_action_responses,
+            pending: pending,
+            eligible_ids: [host_id],
+            passed_ids: MapSet.new()
+          }
+      }
+
+      %{state | game: game}
+    end)
+
+    Phoenix.PubSub.broadcast(Coupex.PubSub, "room:#{String.upcase(code)}", {:room_updated, code})
+
+    assert has_element?(host_view, "#claim-challenge-modal")
+    assert has_element?(host_view, "#claim-challenge-button")
+    assert has_element?(host_view, "#claim-allow-button")
+    assert has_element?(host_view, "#claim-challenge-modal", "Ambassador")
+    assert has_element?(host_view, "#claim-challenge-modal", "Exchange")
+  end
+
   test "two-player allow does not show waiting-for-others notice", %{conn: conn} do
     host_id = "host-player"
     guest_id = "guest-player"
