@@ -4,7 +4,6 @@ defmodule Coupex.Game do
   alias Coupex.Game.Log
   alias Coupex.Game.Phase
   alias Coupex.Game.Player
-  alias Coupex.Game.Validation
 
   @roles [:duke, :assassin, :captain, :ambassador, :contessa]
   @treasury_coins 50
@@ -136,252 +135,27 @@ defmodule Coupex.Game do
   end
 
   def declare_action(game, actor_id, action_id, target_id \\ nil) do
-    with :ok <- Validation.ensure_active(game),
-         :ok <- Validation.ensure_turn(game, actor_id),
-         :ok <- Validation.ensure_phase(game, :awaiting_action),
-         {:ok, spec} <- fetch_action(action_id),
-         :ok <- Validation.ensure_action_allowed(game, actor_id, spec),
-         :ok <- Validation.ensure_target(game, actor_id, spec, target_id) do
-      pending = %{
-        actor_id: actor_id,
-        actor_name: player_name(game, actor_id),
-        action: spec.id,
-        action_label: spec.label,
-        claim_role: spec.claim,
-        target_id: target_id,
-        target_name: target_name(game, target_id),
-        block_roles: Phase.block_roles(spec.id),
-        block_candidates: Phase.block_candidates(game, actor_id, spec.id, target_id),
-        cost: spec.cost
-      }
-
-      game = pay_cost(game, actor_id, spec.cost)
-      game = Log.push_log(game, Log.event(:action, Log.describe_action(pending)))
-
-      cond do
-        spec.id == "income" ->
-          {:ok, advance_or_finish(resolve_income(game, actor_id, 1))}
-
-        spec.id == "coup" ->
-          {:ok,
-           begin_reveal_phase(
-             game,
-             target_id,
-             "Choose an influence to lose to the coup.",
-             %{type: :advance_turn}
-           )}
-
-        spec.claim != nil ->
-          {:ok,
-           put_phase(game, %{
-             kind: :awaiting_action_responses,
-             pending: pending,
-             eligible_ids: alive_other_player_ids(game, actor_id),
-             passed_ids: MapSet.new()
-           })}
-
-        pending.block_roles == [] ->
-          {:ok, after_resolution(resolve_action(game, pending))}
-
-        true ->
-          {:ok,
-           put_phase(game, %{
-             kind: :awaiting_block,
-             pending: pending,
-             eligible_ids: pending.block_candidates,
-             passed_ids: MapSet.new()
-           })}
-      end
-    end
+    Phase.module(game.phase).handle_action(game, actor_id, action_id, target_id)
   end
 
   def pass(game, player_id) do
-    case game.phase do
-      %{
-        kind: :awaiting_action_responses,
-        eligible_ids: eligible_ids,
-        pending: pending
-      } ->
-        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
-
-          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
-            # Challenges are done, now we proceed to handle blocks
-            after_action_responses(game, pending)
-          else
-            {:ok, game}
-          end
-        end
-
-      %{
-        kind: :awaiting_block,
-        eligible_ids: eligible_ids,
-        pending: pending
-      } ->
-        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
-
-          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
-            # Challenge and blocks are both done, we can resolve the action
-            {:ok, resolve_and_advance(game, pending)}
-          else
-            {:ok, game}
-          end
-        end
-
-      %{
-        kind: :awaiting_block_challenge,
-        eligible_ids: eligible_ids,
-        block: block
-      } ->
-        with :ok <- Validation.ensure_member(eligible_ids, player_id) do
-          game = update_in(game.phase.passed_ids, &MapSet.put(&1, player_id))
-
-          if Enum.all?(eligible_ids, &MapSet.member?(game.phase.passed_ids, &1)) do
-            game =
-              Log.push_log(
-                game,
-                Log.event(:block, %{
-                  actor: player_name(game, block.player_id),
-                  detail: "held the block"
-                })
-              )
-
-            {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}
-          else
-            {:ok, game}
-          end
-        end
-
-      _ ->
-        {:error, "There is nothing to pass on right now."}
-    end
+    Phase.module(game.phase).handle_pass(game, player_id)
   end
 
   def challenge(game, challenger_id) do
-    case game.phase do
-      %{kind: :awaiting_action_responses, eligible_ids: eligible_ids, pending: pending} ->
-        with :ok <- Validation.ensure_member(eligible_ids, challenger_id) do
-          resolve_challenge(game, challenger_id, pending.actor_id, pending.claim_role, %{
-            success: %{type: :continue_after_failed_action_challenge, pending: pending},
-            failure: %{type: :cancel_after_successful_action_challenge}
-          })
-        end
-
-      %{
-        kind: :awaiting_block_challenge,
-        eligible_ids: eligible_ids,
-        pending: pending,
-        block: block
-      } ->
-        with :ok <- Validation.ensure_member(eligible_ids, challenger_id) do
-          resolve_challenge(game, challenger_id, block.player_id, block.role, %{
-            success: %{type: :block_stands},
-            failure: %{type: :resume_after_successful_block_challenge, pending: pending}
-          })
-        end
-
-      _ ->
-        {:error, "There is no claim to challenge right now."}
-    end
+    Phase.module(game.phase).handle_challenge(game, challenger_id)
   end
 
   def block(game, blocker_id, role) do
-    case game.phase do
-      %{kind: :awaiting_block, pending: pending, eligible_ids: eligible_ids} ->
-        with :ok <- Validation.ensure_member(eligible_ids, blocker_id),
-             :ok <- Validation.ensure_block_role(pending.action, role) do
-          block = %{player_id: blocker_id, role: role}
-
-          game =
-            Log.push_log(
-              game,
-              Log.event(:block, %{
-                actor: player_name(game, blocker_id),
-                role: Log.role_label(role),
-                detail: "blocked #{pending.action_label}"
-              })
-            )
-
-          {:ok,
-           put_phase(game, %{
-             kind: :awaiting_block_challenge,
-             pending: pending,
-             block: block,
-             eligible_ids: alive_other_player_ids(game, blocker_id),
-             passed_ids: MapSet.new()
-           })}
-        end
-
-      _ ->
-        {:error, "You cannot block right now."}
-    end
+    Phase.module(game.phase).handle_block(game, blocker_id, role)
   end
 
   def reveal_influence(game, player_id, index) do
-    case game.phase do
-      %{kind: :awaiting_reveal, player_id: ^player_id, continuation: continuation} ->
-        with :ok <- Validation.ensure_reveal_index(game, player_id, index) do
-          game = reveal_player_influence(game, player_id, index)
-          game = check_winner(game)
-
-          if game.status == :finished do
-            {:ok, put_phase(game, %{kind: :game_over})}
-          else
-            continue_after_reveal(game, continuation)
-          end
-        end
-
-      %{kind: :awaiting_reveal} ->
-        {:error, "Another player must choose an influence first."}
-
-      _ ->
-        {:error, "No reveal is pending."}
-    end
+    Phase.module(game.phase).handle_reveal(game, player_id, index)
   end
 
   def choose_exchange(game, player_id, indexes) when is_list(indexes) do
-    case game.phase do
-      %{
-        kind: :awaiting_exchange,
-        player_id: ^player_id,
-        options: options,
-        keep_count: keep_count,
-        deck_rest: deck_rest
-      } ->
-        indexes = Enum.uniq(indexes)
-
-        with :ok <- Validation.ensure_exchange_indexes(options, indexes, keep_count) do
-          kept = Enum.map(indexes, &Enum.at(options, &1))
-          returned = list_difference(options, kept)
-
-          game =
-            update_player(game, player_id, fn player ->
-              revealed = Enum.filter(player.influences, & &1.revealed)
-              hidden = Enum.map(kept, &%{role: &1, revealed: false})
-              %{player | influences: revealed ++ hidden}
-            end)
-
-          game = %{game | deck: Enum.shuffle(deck_rest ++ returned)}
-
-          game =
-            Log.push_log(
-              game,
-              Log.event(:exchange, %{
-                actor: player_name(game, player_id),
-                detail: "rearranged the court"
-              })
-            )
-
-          {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}
-        end
-
-      %{kind: :awaiting_exchange} ->
-        {:error, "Another player is exchanging cards right now."}
-
-      _ ->
-        {:error, "There is no exchange to resolve."}
-    end
+    Phase.module(game.phase).handle_exchange(game, player_id, indexes)
   end
 
   def view(game, viewer_id) do
@@ -417,64 +191,7 @@ defmodule Coupex.Game do
   end
 
   def awaiting(game) do
-    case game.phase do
-      %{kind: :awaiting_action} ->
-        %{
-          kind: :action,
-          actor_ids: [game.active_player_id],
-          required?: true,
-          actions: [:take_action],
-          subject: nil
-        }
-
-      %{kind: :awaiting_action_responses, pending: pending} = phase ->
-        %{
-          kind: :action_response,
-          actor_ids: remaining_eligible_ids(phase),
-          required?: false,
-          actions: [:pass, :challenge],
-          subject: pending
-        }
-
-      %{kind: :awaiting_block, pending: pending} = phase ->
-        %{
-          kind: :block,
-          actor_ids: remaining_eligible_ids(phase),
-          required?: false,
-          actions: [:pass, :block],
-          subject: pending
-        }
-
-      %{kind: :awaiting_block_challenge, pending: pending, block: block} = phase ->
-        %{
-          kind: :block_response,
-          actor_ids: remaining_eligible_ids(phase),
-          required?: false,
-          actions: [:pass, :challenge],
-          subject: %{pending: pending, block: block}
-        }
-
-      %{kind: :awaiting_reveal, player_id: player_id, reason: reason} ->
-        %{
-          kind: :reveal,
-          actor_ids: [player_id],
-          required?: true,
-          actions: [:reveal],
-          subject: %{reason: reason}
-        }
-
-      %{kind: :awaiting_exchange, player_id: player_id, options: options, keep_count: keep_count} ->
-        %{
-          kind: :exchange,
-          actor_ids: [player_id],
-          required?: true,
-          actions: [:exchange],
-          subject: %{options: options, keep_count: keep_count}
-        }
-
-      %{kind: :game_over} ->
-        %{kind: :none, actor_ids: [], required?: false, actions: [], subject: nil}
-    end
+    Phase.module(game.phase).awaiting(game)
   end
 
   def actors_waiting(game), do: awaiting(game).actor_ids
@@ -488,137 +205,11 @@ defmodule Coupex.Game do
   end
 
   defp interaction(game, viewer_id) do
-    case game.phase do
-      %{kind: :awaiting_action} ->
-        %{kind: :action, your_turn: viewer_id == game.active_player_id}
-
-      %{
-        kind: :awaiting_action_responses,
-        pending: pending,
-        eligible_ids: eligible_ids,
-        passed_ids: passed_ids
-      } ->
-        can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
-
-        pending_responder_ids =
-          Enum.reject(eligible_ids, fn player_id -> MapSet.member?(passed_ids, player_id) end)
-
-        awaiting_others =
-          viewer_id in eligible_ids and
-            MapSet.member?(passed_ids, viewer_id) and
-            Enum.any?(eligible_ids, fn player_id ->
-              player_id != viewer_id and not MapSet.member?(passed_ids, player_id)
-            end)
-
-        %{
-          kind: :respond_action,
-          pending: public_pending(pending),
-          can_challenge: can_respond,
-          can_pass: can_respond,
-          awaiting_others: awaiting_others,
-          waiting_on_ids: pending_responder_ids,
-          waiting_on_name:
-            case pending_responder_ids do
-              [single_player_id] -> player_name(game, single_player_id)
-              _ -> nil
-            end
-        }
-
-      %{
-        kind: :awaiting_block,
-        pending: pending,
-        eligible_ids: eligible_ids,
-        passed_ids: passed_ids
-      } ->
-        can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
-
-        pending_responder_ids =
-          Enum.reject(eligible_ids, fn player_id -> MapSet.member?(passed_ids, player_id) end)
-
-        awaiting_others =
-          viewer_id in eligible_ids and
-            MapSet.member?(passed_ids, viewer_id) and
-            Enum.any?(eligible_ids, fn player_id ->
-              player_id != viewer_id and not MapSet.member?(passed_ids, player_id)
-            end)
-
-        block_roles = if can_respond, do: pending.block_roles, else: []
-
-        %{
-          kind: :block,
-          pending: public_pending(pending),
-          block_roles: Enum.map(block_roles, &Log.role_label/1),
-          block_role_ids: Enum.map(block_roles, &Atom.to_string/1),
-          can_pass: can_respond,
-          awaiting_others: awaiting_others,
-          waiting_on_ids: pending_responder_ids,
-          waiting_on_name:
-            case pending_responder_ids do
-              [single_player_id] -> player_name(game, single_player_id)
-              _ -> nil
-            end
-        }
-
-      %{
-        kind: :awaiting_block_challenge,
-        pending: pending,
-        block: block,
-        eligible_ids: eligible_ids,
-        passed_ids: passed_ids
-      } ->
-        can_respond = viewer_id in eligible_ids and not MapSet.member?(passed_ids, viewer_id)
-
-        pending_responder_ids =
-          Enum.reject(eligible_ids, fn player_id -> MapSet.member?(passed_ids, player_id) end)
-
-        awaiting_others =
-          viewer_id in eligible_ids and
-            MapSet.member?(passed_ids, viewer_id) and
-            Enum.any?(eligible_ids, fn player_id ->
-              player_id != viewer_id and not MapSet.member?(passed_ids, player_id)
-            end)
-
-        %{
-          kind: :respond_block,
-          pending: public_pending(pending),
-          block: %{
-            player_id: block.player_id,
-            player_name: player_name(game, block.player_id),
-            role: Log.role_label(block.role)
-          },
-          can_challenge: can_respond,
-          can_pass: can_respond,
-          awaiting_others: awaiting_others,
-          waiting_on_ids: pending_responder_ids,
-          waiting_on_name:
-            case pending_responder_ids do
-              [single_player_id] -> player_name(game, single_player_id)
-              _ -> nil
-            end
-        }
-
-      %{kind: :awaiting_reveal, player_id: player_id, reason: reason} ->
-        %{
-          kind: :reveal,
-          reason: reason,
-          your_turn: viewer_id == player_id,
-          player_name: player_name(game, player_id)
-        }
-
-      %{kind: :awaiting_exchange, player_id: player_id, options: options, keep_count: keep_count} ->
-        %{
-          kind: :exchange,
-          your_turn: viewer_id == player_id,
-          keep_count: keep_count,
-          options: if(viewer_id == player_id, do: Enum.map(options, &Log.role_label/1), else: [])
-        }
-
-      %{kind: :game_over} ->
-        %{kind: :game_over}
-    end
+    Phase.module(game.phase).interaction(game, viewer_id)
   end
 
-  defp after_action_responses(game, pending) do
+  @doc false
+  def after_action_responses(game, pending) do
     # Players might have been eliminated during action responses, i.e. we need
     # to recalculate block_candidates
     block_candidates =
@@ -640,7 +231,8 @@ defmodule Coupex.Game do
     end
   end
 
-  defp resolve_challenge(game, challenger_id, claimed_by_id, role, continuations) do
+  @doc false
+  def resolve_challenge(game, challenger_id, claimed_by_id, role, continuations) do
     truthful = has_unrevealed_role?(game, claimed_by_id, role)
 
     game =
@@ -684,7 +276,8 @@ defmodule Coupex.Game do
     end
   end
 
-  defp continue_after_reveal(game, continuation) do
+  @doc false
+  def continue_after_reveal(game, continuation) do
     case continuation.type do
       :advance_turn ->
         {:ok, advance_or_finish(%{game | phase: %{kind: :awaiting_action}})}
@@ -708,7 +301,8 @@ defmodule Coupex.Game do
     end
   end
 
-  defp resolve_action(game, pending) do
+  @doc false
+  def resolve_action(game, pending) do
     case pending.action do
       "foreign_aid" ->
         game
@@ -758,7 +352,8 @@ defmodule Coupex.Game do
     })
   end
 
-  defp resolve_income(game, player_id, amount) do
+  @doc false
+  def resolve_income(game, player_id, amount) do
     game
     |> update_player(player_id, fn player -> %{player | coins: player.coins + amount} end)
     |> Map.update!(:treasury, &max(&1 - amount, 0))
@@ -776,7 +371,8 @@ defmodule Coupex.Game do
     {updated_game, amount}
   end
 
-  defp begin_reveal_phase(game, player_id, reason, continuation) do
+  @doc false
+  def begin_reveal_phase(game, player_id, reason, continuation) do
     case single_unrevealed_influence_index(game, player_id) do
       {:ok, index} ->
         game = reveal_player_influence(game, player_id, index)
@@ -817,21 +413,25 @@ defmodule Coupex.Game do
     end
   end
 
-  defp resolve_and_advance(game, pending) do
+  @doc false
+  def resolve_and_advance(game, pending) do
     game
     |> Map.put(:phase, %{kind: :awaiting_action})
     |> resolve_action(pending)
     |> after_resolution()
   end
 
-  defp advance_or_finish(game) do
+  @doc false
+  def advance_or_finish(game) do
     game
     |> check_winner()
     |> advance_turn_if_active()
   end
 
-  defp after_resolution(%{phase: %{kind: :awaiting_action}} = game), do: advance_or_finish(game)
-  defp after_resolution(game), do: game
+  @doc false
+  def after_resolution(%{phase: %{kind: :awaiting_action}} = game), do: advance_or_finish(game)
+  @doc false
+  def after_resolution(game), do: game
 
   defp advance_turn_if_active(%{status: :finished} = game),
     do: put_phase(game, %{kind: :game_over})
@@ -872,7 +472,8 @@ defmodule Coupex.Game do
     end
   end
 
-  defp check_winner(game) do
+  @doc false
+  def check_winner(game) do
     alive_players = Enum.reject(game.players, &Player.eliminated?/1)
 
     case alive_players do
@@ -887,11 +488,14 @@ defmodule Coupex.Game do
     end
   end
 
-  defp put_phase(game, phase), do: %{game | phase: phase}
+  @doc false
+  def put_phase(game, phase), do: %{game | phase: phase}
 
-  defp pay_cost(game, _player_id, 0), do: game
+  @doc false
+  def pay_cost(game, _player_id, 0), do: game
 
-  defp pay_cost(game, player_id, cost) do
+  @doc false
+  def pay_cost(game, player_id, cost) do
     game
     |> update_player(player_id, fn player -> %{player | coins: player.coins - cost} end)
     |> Map.update!(:treasury, &(&1 + cost))
@@ -917,7 +521,8 @@ defmodule Coupex.Game do
     |> Map.put(:deck, rest)
   end
 
-  defp reveal_player_influence(game, player_id, index) do
+  @doc false
+  def reveal_player_influence(game, player_id, index) do
     player = Player.fetch!(game.players, player_id)
     influence = Enum.at(player.influences, index)
     updated_influences = List.replace_at(player.influences, index, %{influence | revealed: true})
@@ -975,7 +580,8 @@ defmodule Coupex.Game do
     end)
   end
 
-  defp public_pending(pending) do
+  @doc false
+  def public_pending(pending) do
     %{
       actor_id: pending.actor_id,
       actor_name: pending.actor_name,
@@ -988,13 +594,15 @@ defmodule Coupex.Game do
     }
   end
 
-  defp remaining_eligible_ids(%{eligible_ids: eligible_ids, passed_ids: passed_ids}) do
+  @doc false
+  def remaining_eligible_ids(%{eligible_ids: eligible_ids, passed_ids: passed_ids}) do
     Enum.reject(eligible_ids, &MapSet.member?(passed_ids, &1))
   end
 
   defp build_deck, do: Enum.flat_map(@roles, &List.duplicate(&1, 3))
 
-  defp fetch_action(action_id) do
+  @doc false
+  def fetch_action(action_id) do
     case Enum.find(action_specs(), &(&1.id == action_id)) do
       nil -> {:error, "Unknown action."}
       spec -> {:ok, spec}
@@ -1015,13 +623,15 @@ defmodule Coupex.Game do
     |> Enum.member?(role)
   end
 
-  defp alive_other_player_ids(game, player_id) do
+  @doc false
+  def alive_other_player_ids(game, player_id) do
     game.players
     |> Enum.reject(&(&1.id == player_id or Player.eliminated?(&1)))
     |> Enum.map(& &1.id)
   end
 
-  defp update_player(game, player_id, fun) do
+  @doc false
+  def update_player(game, player_id, fun) do
     updated_players =
       Enum.map(game.players, fn player ->
         if player.id == player_id, do: fun.(player), else: player
@@ -1040,11 +650,15 @@ defmodule Coupex.Game do
     }
   end
 
-  defp player_name(game, player_id), do: Player.fetch!(game.players, player_id).name
-  defp target_name(_game, nil), do: nil
-  defp target_name(game, target_id), do: player_name(game, target_id)
+  @doc false
+  def player_name(game, player_id), do: Player.fetch!(game.players, player_id).name
+  @doc false
+  def target_name(_game, nil), do: nil
+  @doc false
+  def target_name(game, target_id), do: player_name(game, target_id)
 
-  defp list_difference(items, selected) do
+  @doc false
+  def list_difference(items, selected) do
     Enum.reduce(selected, items, fn value, acc -> List.delete(acc, value) end)
   end
 end

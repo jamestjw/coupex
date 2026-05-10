@@ -4,16 +4,81 @@ defmodule Coupex.Game.Phase do
   alias Coupex.Game.Player
   alias Coupex.Game.Validation
 
-  @type phase :: %{
+  @type t :: %{
           required(:kind) => atom(),
-          optional(:pending) => map(),
-          optional(:eligible_ids) => [String.t()],
-          optional(:passed_ids) => map(),
-          optional(:exchange_cards) => [map()]
+          optional(atom()) => any()
         }
 
-  @type t :: phase()
+  @callback interaction(game :: map(), viewer_id :: String.t()) :: map()
+  @callback awaiting(game :: map()) :: map()
 
+  @callback handle_action(
+              game :: map(),
+              player_id :: String.t(),
+              action_id :: String.t(),
+              target_id :: String.t() | nil
+            ) :: {:ok, map()} | {:error, String.t()}
+
+  @callback handle_pass(game :: map(), player_id :: String.t()) ::
+              {:ok, map()} | {:error, String.t()}
+
+  @callback handle_challenge(game :: map(), player_id :: String.t()) ::
+              {:ok, map()} | {:error, String.t()}
+
+  @callback handle_block(game :: map(), player_id :: String.t(), role :: atom()) ::
+              {:ok, map()} | {:error, String.t()}
+
+  @callback handle_reveal(game :: map(), player_id :: String.t(), index :: integer()) ::
+              {:ok, map()} | {:error, String.t()}
+
+  @callback handle_exchange(game :: map(), player_id :: String.t(), indexes :: [integer()]) ::
+              {:ok, map()} | {:error, String.t()}
+
+  defmacro __using__(_opts) do
+    quote do
+      @behaviour Coupex.Game.Phase
+
+      def interaction(_game, _viewer_id), do: %{kind: :none}
+      def awaiting(_game), do: %{kind: :none, actor_ids: [], required?: false, actions: [], subject: nil}
+
+      def handle_action(_game, _player_id, _action_id, _target_id),
+        do: {:error, "That action is not available right now."}
+
+      def handle_pass(_game, _player_id),
+        do: {:error, "That action is not available right now."}
+
+      def handle_challenge(_game, _player_id),
+        do: {:error, "That action is not available right now."}
+
+      def handle_block(_game, _player_id, _role),
+        do: {:error, "That action is not available right now."}
+
+      def handle_reveal(_game, _player_id, _index),
+        do: {:error, "That action is not available right now."}
+
+      def handle_exchange(_game, _player_id, _indexes),
+        do: {:error, "That action is not available right now."}
+
+      defoverridable interaction: 2,
+                     awaiting: 1,
+                     handle_action: 4,
+                     handle_pass: 2,
+                     handle_challenge: 2,
+                     handle_block: 3,
+                     handle_reveal: 3,
+                     handle_exchange: 3
+    end
+  end
+
+  def module(%{kind: :awaiting_action}), do: Coupex.Game.Phase.AwaitingAction
+  def module(%{kind: :awaiting_action_responses}), do: Coupex.Game.Phase.AwaitingActionResponses
+  def module(%{kind: :awaiting_block}), do: Coupex.Game.Phase.AwaitingBlock
+  def module(%{kind: :awaiting_block_challenge}), do: Coupex.Game.Phase.AwaitingBlockChallenge
+  def module(%{kind: :awaiting_reveal}), do: Coupex.Game.Phase.AwaitingReveal
+  def module(%{kind: :awaiting_exchange}), do: Coupex.Game.Phase.AwaitingExchange
+  def module(%{kind: :game_over}), do: Coupex.Game.Phase.GameOver
+
+  # Helper functions previously in Phase module
   def block_candidates(game, actor_id, "foreign_aid", _target_id),
     do: alive_other_player_ids(game, actor_id)
 

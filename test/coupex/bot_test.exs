@@ -55,7 +55,7 @@ defmodule Coupex.BotTest do
 
     view = Game.view(game, player_one.id)
 
-    assert {:take_action, "tax", nil} = Bot.choose_move(view, game, player_one.id)
+    assert {:take_action, "exchange", nil} = Bot.choose_move(view, game, player_one.id)
   end
 
   test "chooses exchange indexes from the offered exchange options" do
