@@ -49,7 +49,9 @@ defmodule Coupex.RoomServer do
           required(:host_id) => player_id() | nil,
           required(:players) => %{optional(player_id()) => player()},
           required(:order) => [player_id()],
-          required(:game) => Game.t() | nil
+          required(:game) => Game.t() | nil,
+          optional(:bot_turn_ref) => reference() | nil,
+          optional(:bot_turn_timer_ref) => reference() | nil
         }
 
   @topic_prefix "room:"
@@ -156,6 +158,7 @@ defmodule Coupex.RoomServer do
 
   @min_players 2
   @max_players 6
+  @bot_turn_delay_ms 450
 
   @impl true
   def init(code) do
@@ -165,7 +168,9 @@ defmodule Coupex.RoomServer do
        host_id: nil,
        players: %{},
        order: [],
-       game: nil
+       game: nil,
+       bot_turn_ref: nil,
+       bot_turn_timer_ref: nil
      }}
   end
 
@@ -211,7 +216,9 @@ defmodule Coupex.RoomServer do
          :ok <- ensure_player_count(state),
          :ok <- ensure_all_ready(state),
          {:ok, game} <- Game.new(starting_players(state)) do
-      next_state = %{state | game: game, players: reset_ready(state.players)} |> run_bot_turns()
+      next_state =
+        %{state | game: game, players: reset_ready(state.players)} |> schedule_bot_turn()
+
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -223,7 +230,7 @@ defmodule Coupex.RoomServer do
     with :ok <- ensure_host(state, player_id),
          :ok <- ensure_waiting(state),
          :ok <- ensure_room_has_space(state) do
-      next_state = upsert_bot(state) |> run_bot_turns()
+      next_state = upsert_bot(state) |> schedule_bot_turn()
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -275,7 +282,7 @@ defmodule Coupex.RoomServer do
         next_state
         |> Map.put(:game, game)
         |> Map.update!(:players, &reset_ready/1)
-        |> run_bot_turns()
+        |> schedule_bot_turn()
 
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
@@ -319,6 +326,28 @@ defmodule Coupex.RoomServer do
   end
 
   @impl true
+  def handle_info({:run_bot_turn, ref}, %{bot_turn_ref: ref} = state) do
+    state = %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
+
+    next_state =
+      case bot_actor_id(state) do
+        nil ->
+          state
+
+        bot_id ->
+          case play_bot_turn(state, bot_id) do
+            {:ok, next_state} -> schedule_bot_turn(next_state)
+            {:error, message} -> log_bot_failure(state, bot_id, message)
+          end
+      end
+
+    broadcast(next_state)
+    {:noreply, next_state}
+  end
+
+  def handle_info({:run_bot_turn, _ref}, state), do: {:noreply, state}
+
+  @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     next_state =
       case Enum.find(state.players, fn {_player_id, player} -> player.monitor_ref == ref end) do
@@ -338,7 +367,7 @@ defmodule Coupex.RoomServer do
     with {:ok, _player} <- fetch_room_player(state, player_id),
          %{} = game <- state.game,
          {:ok, updated_game} <- fun.(game) do
-      next_state = %{state | game: updated_game} |> run_bot_turns()
+      next_state = %{state | game: updated_game} |> schedule_bot_turn()
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -688,27 +717,29 @@ defmodule Coupex.RoomServer do
     |> Kernel.+(1)
   end
 
-  defp run_bot_turns(%{game: nil} = state), do: state
-  defp run_bot_turns(%{game: %{status: :finished}} = state), do: state
+  defp schedule_bot_turn(%{game: nil} = state), do: cancel_bot_turn(state)
+  defp schedule_bot_turn(%{game: %{status: :finished}} = state), do: cancel_bot_turn(state)
 
-  defp run_bot_turns(state) do
-    run_bot_turns(state, 0)
-  end
-
-  defp run_bot_turns(state, depth) when depth < 32 do
-    case bot_actor_id(state) do
-      nil ->
+  defp schedule_bot_turn(state) do
+    if bot_actor_id(state) do
+      if state.bot_turn_ref do
         state
-
-      bot_id ->
-        case play_bot_turn(state, bot_id) do
-          {:ok, next_state} -> run_bot_turns(next_state, depth + 1)
-          {:error, message} -> log_bot_failure(state, bot_id, message)
-        end
+      else
+        ref = make_ref()
+        timer_ref = Process.send_after(self(), {:run_bot_turn, ref}, @bot_turn_delay_ms)
+        %{state | bot_turn_ref: ref, bot_turn_timer_ref: timer_ref}
+      end
+    else
+      cancel_bot_turn(state)
     end
   end
 
-  defp run_bot_turns(state, _depth), do: state
+  defp cancel_bot_turn(%{bot_turn_timer_ref: timer_ref} = state) when is_reference(timer_ref) do
+    Process.cancel_timer(timer_ref)
+    %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
+  end
+
+  defp cancel_bot_turn(state), do: %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
 
   defp bot_actor_id(%{game: game} = state) do
     game

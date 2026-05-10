@@ -104,7 +104,7 @@ defmodule Coupex.RoomServerTest do
     assert restarted.game.status == :active
   end
 
-  test "rematch restart advances immediately when a bot acts first" do
+  test "rematch restart schedules a bot when it acts first" do
     host_id = "host-player"
 
     {:ok, code} = RoomServer.create_room(host_id, "Host", self())
@@ -126,8 +126,13 @@ defmodule Coupex.RoomServerTest do
     assert {:ok, restarted} = RoomServer.restart_game(code, "bot-1")
 
     assert restarted.game.status == :active
+    assert restarted.game.interaction.kind == :action
+    assert restarted.game.active_player_id == "bot-1"
 
-    assert Enum.any?(restarted.game.log, fn entry ->
+    run_scheduled_bot_turns!(code, 1)
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
+
+    assert Enum.any?(snapshot.game.log, fn entry ->
              entry.kind == :action and entry.actor == "Bot 1"
            end)
   end
@@ -196,6 +201,11 @@ defmodule Coupex.RoomServerTest do
     end)
 
     assert {:ok, snapshot} = RoomServer.reveal(code, host_id, 0)
+    assert snapshot.game.interaction.kind == :exchange
+    assert snapshot.game.interaction.your_turn == false
+
+    run_scheduled_bot_turns!(code, 1)
+    assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
 
     assert snapshot.game.interaction.kind == :action
     assert snapshot.game.active_player_id == host_id
@@ -204,6 +214,22 @@ defmodule Coupex.RoomServerTest do
              entry.kind == :exchange and entry.actor == "Bot 1" and
                entry.detail == "rearranged the court"
            end)
+  end
+
+  defp run_scheduled_bot_turns!(code, limit) do
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    Enum.reduce_while(1..limit, :ok, fn _step, :ok ->
+      case :sys.get_state(room_pid).bot_turn_ref do
+        nil ->
+          {:halt, :ok}
+
+        ref ->
+          send(room_pid, {:run_bot_turn, ref})
+          _ = :sys.get_state(room_pid)
+          {:cont, :ok}
+      end
+    end)
   end
 
   defp mark_finished!(code) do

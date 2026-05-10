@@ -77,6 +77,8 @@ defmodule CoupexWeb.RoomLiveTest do
     |> element("button[phx-click='take_action'][phx-value-action='tax']")
     |> render_click()
 
+    run_scheduled_bot_turns!(code, 3)
+
     assert {:ok, snapshot} = RoomServer.snapshot(code, host_id)
 
     if snapshot.game.interaction.kind == :respond_action do
@@ -619,5 +621,21 @@ defmodule CoupexWeb.RoomLiveTest do
     end)
 
     Phoenix.PubSub.broadcast(Coupex.PubSub, "room:#{String.upcase(code)}", {:room_updated, code})
+  end
+
+  defp run_scheduled_bot_turns!(code, limit) do
+    room_pid = GenServer.whereis(RoomServer.via(code))
+
+    Enum.reduce_while(1..limit, :ok, fn _step, :ok ->
+      case :sys.get_state(room_pid).bot_turn_ref do
+        nil ->
+          {:halt, :ok}
+
+        ref ->
+          send(room_pid, {:run_bot_turn, ref})
+          _ = :sys.get_state(room_pid)
+          {:cont, :ok}
+      end
+    end)
   end
 end
