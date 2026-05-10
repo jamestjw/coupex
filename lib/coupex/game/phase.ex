@@ -9,37 +9,43 @@ defmodule Coupex.Game.Phase do
           optional(atom()) => any()
         }
 
-  @callback interaction(game :: map(), viewer_id :: String.t()) :: map()
-  @callback awaiting(game :: map()) :: map()
+  @callback interaction(game :: Coupex.Game.t(), viewer_id :: String.t()) :: map()
+  @callback awaiting(game :: Coupex.Game.t()) :: map()
 
   @callback handle_action(
-              game :: map(),
+              game :: Coupex.Game.t(),
               player_id :: String.t(),
               action_id :: String.t(),
               target_id :: String.t() | nil
-            ) :: {:ok, map()} | {:error, String.t()}
+            ) :: {:ok, Coupex.Game.t()} | {:error, String.t()}
 
-  @callback handle_pass(game :: map(), player_id :: String.t()) ::
-              {:ok, map()} | {:error, String.t()}
+  @callback handle_pass(game :: Coupex.Game.t(), player_id :: String.t()) ::
+              {:ok, Coupex.Game.t()} | {:error, String.t()}
 
-  @callback handle_challenge(game :: map(), player_id :: String.t()) ::
-              {:ok, map()} | {:error, String.t()}
+  @callback handle_challenge(game :: Coupex.Game.t(), player_id :: String.t()) ::
+              {:ok, Coupex.Game.t()} | {:error, String.t()}
 
-  @callback handle_block(game :: map(), player_id :: String.t(), role :: atom()) ::
-              {:ok, map()} | {:error, String.t()}
+  @callback handle_block(game :: Coupex.Game.t(), player_id :: String.t(), role :: atom()) ::
+              {:ok, Coupex.Game.t()} | {:error, String.t()}
 
-  @callback handle_reveal(game :: map(), player_id :: String.t(), index :: integer()) ::
-              {:ok, map()} | {:error, String.t()}
+  @callback handle_reveal(game :: Coupex.Game.t(), player_id :: String.t(), index :: integer()) ::
+              {:ok, Coupex.Game.t()} | {:error, String.t()}
 
-  @callback handle_exchange(game :: map(), player_id :: String.t(), indexes :: [integer()]) ::
-              {:ok, map()} | {:error, String.t()}
+  @callback handle_exchange(
+              game :: Coupex.Game.t(),
+              player_id :: String.t(),
+              indexes :: [integer()]
+            ) ::
+              {:ok, Coupex.Game.t()} | {:error, String.t()}
 
   defmacro __using__(_opts) do
     quote do
       @behaviour Coupex.Game.Phase
 
       def interaction(_game, _viewer_id), do: %{kind: :none}
-      def awaiting(_game), do: %{kind: :none, actor_ids: [], required?: false, actions: [], subject: nil}
+
+      def awaiting(_game),
+        do: %{kind: :none, actor_ids: [], required?: false, actions: [], subject: nil}
 
       def handle_action(_game, _player_id, _action_id, _target_id),
         do: {:error, "That action is not available right now."}
