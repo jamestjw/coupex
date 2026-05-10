@@ -1,6 +1,7 @@
 defmodule Coupex.Game do
   @moduledoc false
 
+  alias Coupex.Game.Action
   alias Coupex.Game.Log
   alias Coupex.Game.Phase
   alias Coupex.Game.Player
@@ -40,59 +41,7 @@ defmodule Coupex.Game do
 
   def roles, do: @roles
 
-  def action_specs do
-    [
-      %{id: "income", label: "Income", detail: "Take 1 coin", claim: nil, cost: 0, target: false},
-      %{
-        id: "foreign_aid",
-        label: "Foreign Aid",
-        detail: "Take 2 coins",
-        claim: nil,
-        cost: 0,
-        target: false
-      },
-      %{
-        id: "tax",
-        label: "Tax",
-        detail: "Claim Duke for 3 coins",
-        claim: :duke,
-        cost: 0,
-        target: false
-      },
-      %{
-        id: "assassinate",
-        label: "Assassinate",
-        detail: "Claim Assassin and pay 3",
-        claim: :assassin,
-        cost: 3,
-        target: true
-      },
-      %{
-        id: "steal",
-        label: "Steal",
-        detail: "Claim Captain to take 2",
-        claim: :captain,
-        cost: 0,
-        target: true
-      },
-      %{
-        id: "exchange",
-        label: "Exchange",
-        detail: "Claim Ambassador to redraw",
-        claim: :ambassador,
-        cost: 0,
-        target: false
-      },
-      %{
-        id: "coup",
-        label: "Coup",
-        detail: "Pay 7 to force influence loss",
-        claim: nil,
-        cost: 7,
-        target: true
-      }
-    ]
-  end
+  def action_specs, do: Action.all_specs()
 
   @spec new([%{id: String.t(), name: String.t()}]) :: {:ok, t()} | {:error, String.t()}
   def new(players) when is_list(players) do
@@ -303,41 +252,11 @@ defmodule Coupex.Game do
 
   @doc false
   def resolve_action(game, pending) do
-    case pending.action do
-      "foreign_aid" ->
-        game
-        |> resolve_income(pending.actor_id, 2)
-        |> Log.log_action_resolution(pending, %{gained: 2})
-
-      "tax" ->
-        game
-        |> resolve_income(pending.actor_id, 3)
-        |> Log.log_action_resolution(pending, %{gained: 3})
-
-      "steal" ->
-        {game, amount} = resolve_steal(game, pending.actor_id, pending.target_id)
-        Log.log_action_resolution(game, pending, %{gained: amount, lost: amount})
-
-      "assassinate" ->
-        if Player.eliminated?(Player.fetch!(game.players, pending.target_id)) do
-          # Maybe the player challenged the assassination and failed, and hence is
-          # already eliminated, there is nothing we need to do here.
-          game
-        else
-          begin_reveal_phase(
-            game,
-            pending.target_id,
-            "Choose an influence to lose to the assassination.",
-            %{type: :advance_turn}
-          )
-        end
-
-      "exchange" ->
-        begin_exchange(game, pending.actor_id)
-    end
+    Action.module(pending.action).resolve(game, pending)
   end
 
-  defp begin_exchange(game, player_id) do
+  @doc false
+  def begin_exchange(game, player_id) do
     player = Player.fetch!(game.players, player_id)
     keep_count = Player.alive_influence_count(player)
     {drawn, deck_rest} = Enum.split(game.deck, min(2, length(game.deck)))
@@ -359,7 +278,8 @@ defmodule Coupex.Game do
     |> Map.update!(:treasury, &max(&1 - amount, 0))
   end
 
-  defp resolve_steal(game, actor_id, target_id) do
+  @doc false
+  def resolve_steal(game, actor_id, target_id) do
     target = Player.fetch!(game.players, target_id)
     amount = min(target.coins, 2)
 
