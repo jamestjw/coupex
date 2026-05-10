@@ -180,7 +180,19 @@ defmodule Coupex.RoomServer do
         if existing && is_reference(existing.monitor_ref),
           do: Process.demonitor(existing.monitor_ref, [:flush])
 
-        next_state = %{state | lobby: Lobby.join(state.lobby, player_id, name, pid, ref)}
+        next_lobby = Lobby.join(state.lobby, player_id, name, pid, ref)
+        next_state = %{state | lobby: next_lobby}
+
+        next_state =
+          if state.game && player_already_joined_room do
+            update_in(next_state, [:game], fn game ->
+              player = Map.fetch!(next_lobby.players, player_id)
+              Log.push_log(game, Log.event(:break, %{text: "#{player.name} reconnected"}))
+            end)
+          else
+            next_state
+          end
+
         broadcast(next_state)
         {:reply, {:ok, view(next_state, player_id)}, next_state}
     end
