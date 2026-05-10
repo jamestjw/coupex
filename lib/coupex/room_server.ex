@@ -7,6 +7,7 @@ defmodule Coupex.RoomServer do
 
   alias Coupex.Game
   alias Coupex.Game.Log
+  alias Coupex.Lobby
 
   @type player_id :: String.t()
   @type role :: :duke | :assassin | :captain | :ambassador | :contessa
@@ -35,20 +36,8 @@ defmodule Coupex.RoomServer do
           required(:rematch) => rematch()
         }
 
-  @type player :: %{
-          required(:id) => player_id(),
-          required(:name) => String.t(),
-          required(:ready) => boolean(),
-          required(:bot) => boolean(),
-          required(:monitor_ref) => reference() | nil,
-          required(:pid) => pid() | nil
-        }
-
   @type room :: %{
-          required(:code) => String.t(),
-          required(:host_id) => player_id() | nil,
-          required(:players) => %{optional(player_id()) => player()},
-          required(:order) => [player_id()],
+          required(:lobby) => Lobby.t(),
           required(:game) => Game.t() | nil,
           optional(:bot_turn_ref) => reference() | nil,
           optional(:bot_turn_timer_ref) => reference() | nil
@@ -164,10 +153,7 @@ defmodule Coupex.RoomServer do
   def init(code) do
     {:ok,
      %{
-       code: normalize_code(code),
-       host_id: nil,
-       players: %{},
-       order: [],
+       lobby: Lobby.new(normalize_code(code)),
        game: nil,
        bot_turn_ref: nil,
        bot_turn_timer_ref: nil
@@ -178,18 +164,23 @@ defmodule Coupex.RoomServer do
   @spec handle_call({:join_room, player_id(), String.t(), pid()}, GenServer.from(), room()) ::
           {:reply, {:ok, view()} | {:error, String.t()}, room()}
   def handle_call({:join_room, player_id, name, pid}, _from, state) do
-    normalized_name = normalize_name(name)
-    player_already_joined_room = Map.has_key?(state.players, player_id)
+    player_already_joined_room = Map.has_key?(state.lobby.players, player_id)
 
     cond do
-      map_size(state.players) >= @max_players and not player_already_joined_room ->
+      map_size(state.lobby.players) >= @max_players and not player_already_joined_room ->
         {:reply, {:error, "That room is already full."}, state}
 
       state.game && not player_already_joined_room ->
         {:reply, {:error, "This game is already in progress."}, state}
 
       true ->
-        next_state = upsert_player(state, player_id, normalized_name, pid)
+        ref = Process.monitor(pid)
+        existing = Map.get(state.lobby.players, player_id)
+
+        if existing && is_reference(existing.monitor_ref),
+          do: Process.demonitor(existing.monitor_ref, [:flush])
+
+        next_state = %{state | lobby: Lobby.join(state.lobby, player_id, name, pid, ref)}
         broadcast(next_state)
         {:reply, {:ok, view(next_state, player_id)}, next_state}
     end
@@ -199,10 +190,9 @@ defmodule Coupex.RoomServer do
     do: {:reply, {:ok, view(state, viewer_id)}, state}
 
   def handle_call({:toggle_ready, player_id}, _from, state) do
-    with {:ok, player} <- fetch_room_player(state, player_id),
-         :ok <- ensure_waiting(state) do
-      updated = %{player | ready: not player.ready}
-      next_state = put_in(state.players[player_id], updated)
+    with :ok <- ensure_waiting(state),
+         {:ok, lobby} <- Lobby.toggle_ready(state.lobby, player_id) do
+      next_state = %{state | lobby: lobby}
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -211,13 +201,13 @@ defmodule Coupex.RoomServer do
   end
 
   def handle_call({:start_game, player_id}, _from, state) do
-    with :ok <- ensure_host(state, player_id),
+    with :ok <- Lobby.ensure_host(state.lobby, player_id),
          :ok <- ensure_waiting(state),
-         :ok <- ensure_player_count(state),
-         :ok <- ensure_all_ready(state),
-         {:ok, game} <- Game.new(starting_players(state)) do
+         :ok <- Lobby.ensure_player_count(state.lobby),
+         :ok <- Lobby.ensure_all_ready(state.lobby),
+         {:ok, game} <- Game.new(Lobby.starting_players(state.lobby)) do
       next_state =
-        %{state | game: game, players: reset_ready(state.players)} |> schedule_bot_turn()
+        %{state | game: game, lobby: Lobby.reset_ready(state.lobby)} |> schedule_bot_turn()
 
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
@@ -227,10 +217,10 @@ defmodule Coupex.RoomServer do
   end
 
   def handle_call({:add_bot, player_id}, _from, state) do
-    with :ok <- ensure_host(state, player_id),
+    with :ok <- Lobby.ensure_host(state.lobby, player_id),
          :ok <- ensure_waiting(state),
-         :ok <- ensure_room_has_space(state) do
-      next_state = upsert_bot(state) |> schedule_bot_turn()
+         :ok <- Lobby.ensure_room_has_space(state.lobby) do
+      next_state = %{state | lobby: Lobby.add_bot(state.lobby)} |> schedule_bot_turn()
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -239,11 +229,10 @@ defmodule Coupex.RoomServer do
   end
 
   def handle_call({:remove_bot, player_id, bot_id}, _from, state) do
-    with :ok <- ensure_host(state, player_id),
+    with :ok <- Lobby.ensure_host(state.lobby, player_id),
          :ok <- ensure_waiting(state),
-         {:ok, _player} <- fetch_room_player(state, bot_id),
-         :ok <- ensure_bot_player(state, bot_id) do
-      next_state = remove_player(state, bot_id)
+         :ok <- Lobby.ensure_bot_player(state.lobby, bot_id) do
+      next_state = %{state | lobby: Lobby.remove_player(state.lobby, bot_id)}
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
@@ -252,36 +241,53 @@ defmodule Coupex.RoomServer do
   end
 
   def handle_call({:toggle_rematch_ready, player_id}, _from, state) do
-    with {:ok, player} <- fetch_room_player(state, player_id),
-         :ok <- ensure_finished(state),
-         :ok <- ensure_connected_player(player),
-         :ok <- ensure_not_rematch_host(state, player_id) do
-      updated = %{player | ready: not player.ready}
-      next_state = put_in(state.players[player_id], updated)
+    with :ok <- ensure_finished(state),
+         {:ok, player} <- Map.fetch(state.lobby.players, player_id),
+         :ok <-
+           if(Lobby.connected_player?(player),
+             do: :ok,
+             else: {:error, "Reconnect before joining a rematch."}
+           ),
+         :ok <-
+           if(Lobby.rematch_host_id(state.lobby) == player_id,
+             do: {:error, "Host readiness is implied for rematches."},
+             else: :ok
+           ) do
+      {:ok, lobby} = Lobby.toggle_ready(state.lobby, player_id)
+      next_state = %{state | lobby: lobby}
       broadcast(next_state)
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
+      :error -> {:reply, {:error, "Join the room before acting."}, state}
       {:error, message} -> {:reply, {:error, message}, state}
     end
   end
 
   def handle_call({:restart_game, player_id}, _from, state) do
-    rematch_host_id = rematch_host_id(state)
+    rematch_host_id = Lobby.rematch_host_id(state.lobby)
 
     with :ok <- ensure_finished(state),
-         :ok <- ensure_rematch_host(rematch_host_id, player_id),
-         {:ok, connected_ids} <- ensure_connected_player_count(state),
+         :ok <-
+           if(rematch_host_id == player_id,
+             do: :ok,
+             else: {:error, "Only the rematch host can restart the game."}
+           ),
+         connected_ids <- Lobby.connected_player_ids(state.lobby),
+         :ok <-
+           if(length(connected_ids) in @min_players..@max_players,
+             do: :ok,
+             else:
+               {:error, "At least #{@min_players} connected players are required for a rematch."}
+           ),
          :ok <- ensure_connected_rematch_ready(state, rematch_host_id, connected_ids),
-         play_order = rematch_play_order(state, rematch_host_id, connected_ids),
-         next_state =
-           state
-           |> prune_to_players(play_order)
+         play_order = Lobby.rematch_play_order(state.lobby, rematch_host_id, connected_ids),
+         next_lobby =
+           state.lobby
+           |> Lobby.prune_to_players(play_order)
            |> Map.put(:host_id, rematch_host_id),
-         {:ok, game} <- Game.new(starting_players(next_state)) do
+         {:ok, game} <- Game.new(Lobby.starting_players(next_lobby)) do
       next_state =
-        next_state
-        |> Map.put(:game, game)
-        |> Map.update!(:players, &reset_ready/1)
+        %{state | lobby: Lobby.reset_ready(next_lobby), game: game}
         |> schedule_bot_turn()
 
       broadcast(next_state)
@@ -350,12 +356,12 @@ defmodule Coupex.RoomServer do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     next_state =
-      case Enum.find(state.players, fn {_player_id, player} -> player.monitor_ref == ref end) do
+      case Enum.find(state.lobby.players, fn {_player_id, player} -> player.monitor_ref == ref end) do
         {player_id, _player} -> handle_player_disconnect(state, player_id)
         nil -> state
       end
 
-    if next_state.order == [] do
+    if next_state.lobby.order == [] do
       {:stop, :normal, next_state}
     else
       broadcast(next_state)
@@ -364,7 +370,7 @@ defmodule Coupex.RoomServer do
   end
 
   defp reply_with_game(state, player_id, fun) do
-    with {:ok, _player} <- fetch_room_player(state, player_id),
+    with {:ok, _player} <- Map.fetch(state.lobby.players, player_id),
          %{} = game <- state.game,
          {:ok, updated_game} <- fun.(game) do
       next_state = %{state | game: updated_game} |> schedule_bot_turn()
@@ -372,53 +378,34 @@ defmodule Coupex.RoomServer do
       {:reply, {:ok, view(next_state, player_id)}, next_state}
     else
       nil -> {:reply, {:error, "The game has not started yet."}, state}
+      :error -> {:reply, {:error, "Join the room before acting."}, state}
       {:error, message} -> {:reply, {:error, message}, state}
     end
   end
 
   defp view(state, viewer_id) do
-    players =
-      Enum.map(state.order, fn player_id ->
-        player = Map.fetch!(state.players, player_id)
-
-        %{
-          id: player.id,
-          name: player.name,
-          ready: player.ready,
-          host: player.id == state.host_id,
-          bot: player.bot
-        }
-      end)
+    players = Lobby.lobby_players_view(state.lobby)
 
     %{
-      code: state.code,
+      code: state.lobby.code,
       viewer_id: viewer_id,
-      host_id: state.host_id,
+      host_id: state.lobby.host_id,
       player_count: length(players),
       can_start: length(players) in @min_players..@max_players,
       lobby_players: players,
       game: state.game && Game.view(state.game, viewer_id),
-      rematch: rematch_view(state)
+      rematch: Lobby.rematch_view(state.lobby, if(state.game, do: state.game.status, else: nil))
     }
   end
 
-  defp remove_player(state, player_id) do
-    players = Map.delete(state.players, player_id)
-    order = List.delete(state.order, player_id)
-    host_id = if state.host_id == player_id, do: List.first(order), else: state.host_id
-
-    %{state | players: players, order: order, host_id: host_id}
+  defp handle_player_disconnect(%{game: nil} = state, player_id) do
+    %{state | lobby: Lobby.remove_player(state.lobby, player_id)}
   end
 
-  defp handle_player_disconnect(%{game: nil} = state, player_id),
-    do: remove_player(state, player_id)
-
   defp handle_player_disconnect(state, player_id) do
-    case Map.fetch(state.players, player_id) do
+    case Map.fetch(state.lobby.players, player_id) do
       {:ok, player} ->
-        player = %{player | monitor_ref: nil, pid: nil}
-
-        state = put_in(state.players[player_id], player)
+        state = %{state | lobby: Lobby.disconnect_player(state.lobby, player_id)}
 
         update_in(state.game, fn game ->
           Log.push_log(game, Log.event(:break, %{text: "#{player.name} disconnected"}))
@@ -429,65 +416,15 @@ defmodule Coupex.RoomServer do
     end
   end
 
-  defp upsert_player(state, player_id, name, pid) do
-    ref = Process.monitor(pid)
-    existing = Map.get(state.players, player_id)
+  defp ensure_connected_rematch_ready(state, rematch_host_id, connected_ids) do
+    pending_ids =
+      Enum.reject(connected_ids, fn player_id ->
+        player_id == rematch_host_id or Map.fetch!(state.lobby.players, player_id).ready
+      end)
 
-    if existing && is_reference(existing.monitor_ref),
-      do: Process.demonitor(existing.monitor_ref, [:flush])
-
-    player = %{
-      id: player_id,
-      name: choose_name(name, existing),
-      ready: if(existing, do: existing.ready, else: false),
-      bot: false,
-      monitor_ref: ref,
-      pid: pid
-    }
-
-    players = Map.put(state.players, player_id, player)
-    order = if player_id in state.order, do: state.order, else: state.order ++ [player_id]
-    host_id = state.host_id || player_id
-
-    %{state | players: players, order: order, host_id: host_id}
-  end
-
-  defp starting_players(state, player_ids \\ nil) do
-    ids = player_ids || state.order
-
-    Enum.map(ids, fn player_id ->
-      player = Map.fetch!(state.players, player_id)
-      %{id: player.id, name: player.name}
-    end)
-  end
-
-  defp reset_ready(players) do
-    Map.new(players, fn {id, player} -> {id, %{player | ready: player.bot}} end)
-  end
-
-  defp fetch_room_player(state, player_id) do
-    case Map.fetch(state.players, player_id) do
-      {:ok, player} -> {:ok, player}
-      :error -> {:error, "Join the room before acting."}
-    end
-  end
-
-  defp ensure_host(state, player_id) do
-    if state.host_id == player_id, do: :ok, else: {:error, "Only the host can start the game."}
-  end
-
-  defp ensure_player_count(state) do
-    if length(state.order) in @min_players..@max_players,
+    if pending_ids == [],
       do: :ok,
-      else: {:error, "Coup requires #{@min_players} to #{@max_players} players."}
-  end
-
-  defp ensure_all_ready(state) do
-    if Enum.all?(state.players, fn {_id, player} -> player.ready end) do
-      :ok
-    else
-      {:error, "Every seated player must be ready before the game can begin."}
-    end
+      else: {:error, "All connected players must be ready before restarting."}
   end
 
   defp ensure_waiting(state) do
@@ -498,249 +435,6 @@ defmodule Coupex.RoomServer do
   defp ensure_finished(%{game: nil}), do: {:error, "The game has not started yet."}
   defp ensure_finished(_state), do: {:error, "The game is still in progress."}
 
-  defp ensure_connected_player(%{pid: pid}) when is_pid(pid), do: :ok
-  defp ensure_connected_player(%{bot: true}), do: :ok
-  defp ensure_connected_player(_player), do: {:error, "Reconnect before joining a rematch."}
-
-  defp ensure_not_rematch_host(state, player_id) do
-    if rematch_host_id(state) == player_id,
-      do: {:error, "Host readiness is implied for rematches."},
-      else: :ok
-  end
-
-  defp ensure_rematch_host(nil, _player_id),
-    do: {:error, "Not enough connected players to restart."}
-
-  defp ensure_rematch_host(rematch_host_id, player_id) do
-    if rematch_host_id == player_id,
-      do: :ok,
-      else: {:error, "Only the rematch host can restart the game."}
-  end
-
-  defp ensure_connected_player_count(state) do
-    connected_ids = connected_player_ids(state)
-
-    if length(connected_ids) in @min_players..@max_players,
-      do: {:ok, connected_ids},
-      else: {:error, "At least #{@min_players} connected players are required for a rematch."}
-  end
-
-  defp ensure_connected_rematch_ready(state, rematch_host_id, connected_ids) do
-    pending_ids =
-      Enum.reject(connected_ids, fn player_id ->
-        player_id == rematch_host_id or Map.fetch!(state.players, player_id).ready
-      end)
-
-    if pending_ids == [],
-      do: :ok,
-      else: {:error, "All connected players must be ready before restarting."}
-  end
-
-  defp connected_player_ids(state) do
-    Enum.filter(state.order, fn player_id ->
-      state.players
-      |> Map.fetch!(player_id)
-      |> connected_player?()
-    end)
-  end
-
-  defp connected_player?(%{pid: pid}) when is_pid(pid), do: true
-  defp connected_player?(%{bot: true}), do: true
-  defp connected_player?(_player), do: false
-
-  defp rematch_host_id(state) do
-    connected_ids = connected_player_ids(state)
-
-    cond do
-      connected_ids == [] -> nil
-      state.host_id in connected_ids -> state.host_id
-      true -> List.first(connected_ids)
-    end
-  end
-
-  defp rematch_play_order(state, rematch_host_id, connected_ids) do
-    connected_set = MapSet.new(connected_ids)
-
-    ordered_connected_ids =
-      Enum.filter(state.order, fn player_id -> MapSet.member?(connected_set, player_id) end)
-
-    case ordered_connected_ids do
-      [] -> Enum.shuffle(connected_ids)
-      ids -> rotate_to(ids, rematch_host_id)
-    end
-  end
-
-  defp rotate_to(ids, player_id) do
-    case Enum.split_while(ids, &(&1 != player_id)) do
-      {_before, []} -> ids
-      {before, after_and_player} -> after_and_player ++ before
-    end
-  end
-
-  defp prune_to_players(state, player_ids) do
-    players = Map.take(state.players, player_ids)
-    host_id = if state.host_id in player_ids, do: state.host_id, else: List.first(player_ids)
-
-    %{state | players: players, order: player_ids, host_id: host_id}
-  end
-
-  defp rematch_view(%{game: %{status: :finished}} = state) do
-    connected_ids = connected_player_ids(state)
-    host_id = rematch_host_id(state)
-
-    players =
-      Enum.map(connected_ids, fn player_id ->
-        player = Map.fetch!(state.players, player_id)
-
-        %{
-          id: player.id,
-          name: player.name,
-          ready: player_id == host_id or player.ready,
-          host: player_id == host_id,
-          bot: player.bot
-        }
-      end)
-
-    pending_names =
-      players
-      |> Enum.reject(&(&1.host or &1.ready))
-      |> Enum.map(& &1.name)
-
-    connected_count = length(connected_ids)
-
-    %{
-      host_id: host_id,
-      connected_players: players,
-      connected_count: connected_count,
-      min_players_met: connected_count >= @min_players,
-      max_players_met: connected_count <= @max_players,
-      can_restart: pending_names == [] and connected_count in @min_players..@max_players,
-      pending_names: pending_names
-    }
-  end
-
-  defp rematch_view(_state), do: nil
-
-  defp parse_block_role(role_id) when is_binary(role_id) do
-    role_id
-    |> String.trim()
-    |> String.downcase()
-    |> then(&Map.fetch(@block_roles, &1))
-    |> case do
-      {:ok, role} -> {:ok, role}
-      :error -> {:error, "That role cannot block this action."}
-    end
-  end
-
-  defp parse_block_role(_role_id), do: {:error, "That role cannot block this action."}
-
-  defp topic(code), do: @topic_prefix <> normalize_code(code)
-
-  defp broadcast(state) do
-    Phoenix.PubSub.broadcast(Coupex.PubSub, topic(state.code), {:room_updated, state.code})
-  end
-
-  # Race condition: We generate a code, check it's free, then register it.
-  # In the nanosecond gap between lookup and start_link, another process
-  # could grab the same code. This results in {:error, {:already_started, pid}}.
-  # Not worth fixing: 62^6 (~56B) codes, window is nanoseconds.
-  defp unique_code do
-    code =
-      5
-      |> :crypto.strong_rand_bytes()
-      |> Base.encode32(case: :upper, padding: false)
-      |> binary_part(0, 6)
-
-    case Registry.lookup(Coupex.RoomRegistry, code) do
-      [] -> code
-      _ -> unique_code()
-    end
-  end
-
-  defp normalize_code(code) do
-    code
-    |> to_string()
-    |> String.trim()
-    |> String.upcase()
-  end
-
-  defp normalize_name(name) do
-    trimmed = name |> to_string() |> String.trim()
-    if trimmed == "", do: nil, else: String.slice(trimmed, 0, 24)
-  end
-
-  defp choose_name(nil, nil), do: "Player"
-  defp choose_name(name, nil), do: name
-  defp choose_name(_name, existing), do: existing.name
-
-  defp ensure_room_has_space(state) do
-    if map_size(state.players) < @max_players,
-      do: :ok,
-      else: {:error, "That room is already full."}
-  end
-
-  defp ensure_bot_player(state, bot_id) do
-    with {:ok, player} <- fetch_room_player(state, bot_id) do
-      if player.bot, do: :ok, else: {:error, "That seat is not a bot."}
-    end
-  end
-
-  defp upsert_bot(state) do
-    bot_index = next_bot_index(state)
-    bot_id = "bot-#{bot_index}"
-
-    player = %{
-      id: bot_id,
-      name: "Bot #{bot_index}",
-      ready: true,
-      bot: true,
-      monitor_ref: nil,
-      pid: nil
-    }
-
-    players = Map.put(state.players, bot_id, player)
-    order = state.order ++ [bot_id]
-
-    %{state | players: players, order: order}
-  end
-
-  defp next_bot_index(state) do
-    state.players
-    |> Map.keys()
-    |> Enum.map(fn id ->
-      case Regex.run(~r/^bot-(\d+)$/, id) do
-        [_, number] -> String.to_integer(number)
-        _ -> 0
-      end
-    end)
-    |> Enum.max(fn -> 0 end)
-    |> Kernel.+(1)
-  end
-
-  defp schedule_bot_turn(%{game: nil} = state), do: cancel_bot_turn(state)
-  defp schedule_bot_turn(%{game: %{status: :finished}} = state), do: cancel_bot_turn(state)
-
-  defp schedule_bot_turn(state) do
-    if bot_actor_id(state) do
-      if state.bot_turn_ref do
-        state
-      else
-        ref = make_ref()
-        timer_ref = Process.send_after(self(), {:run_bot_turn, ref}, @bot_turn_delay_ms)
-        %{state | bot_turn_ref: ref, bot_turn_timer_ref: timer_ref}
-      end
-    else
-      cancel_bot_turn(state)
-    end
-  end
-
-  defp cancel_bot_turn(%{bot_turn_timer_ref: timer_ref} = state) when is_reference(timer_ref) do
-    Process.cancel_timer(timer_ref)
-    %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
-  end
-
-  defp cancel_bot_turn(state), do: %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
-
   defp bot_actor_id(%{game: game} = state) do
     game
     |> Game.actors_waiting()
@@ -750,7 +444,7 @@ defmodule Coupex.RoomServer do
   defp bot_actor_id(_game), do: nil
 
   defp bot_player?(state, player_id) do
-    case Map.get(state.players, player_id) do
+    case Map.get(state.lobby.players, player_id) do
       %{bot: true} -> true
       _ -> false
     end
@@ -792,10 +486,10 @@ defmodule Coupex.RoomServer do
   end
 
   defp log_bot_failure(%{game: game} = state, bot_id, message) do
-    bot_name = state.players |> Map.fetch!(bot_id) |> Map.fetch!(:name)
+    bot_name = state.lobby.players |> Map.fetch!(bot_id) |> Map.fetch!(:name)
 
     Logger.warning(
-      "bot #{bot_id} failed in room #{state.code} during #{inspect(game.phase.kind)}: #{message}"
+      "bot #{bot_id} failed in room #{state.lobby.code} during #{inspect(game.phase.kind)}: #{message}"
     )
 
     entry =
@@ -806,4 +500,71 @@ defmodule Coupex.RoomServer do
 
     %{state | game: Log.push_log(game, entry)}
   end
+
+  defp parse_block_role(role_id) when is_binary(role_id) do
+    role_id
+    |> String.trim()
+    |> String.downcase()
+    |> then(&Map.fetch(@block_roles, &1))
+    |> case do
+      {:ok, role} -> {:ok, role}
+      :error -> {:error, "That role cannot block this action."}
+    end
+  end
+
+  defp parse_block_role(_role_id), do: {:error, "That role cannot block this action."}
+
+  defp topic(code), do: @topic_prefix <> normalize_code(code)
+
+  defp broadcast(state) do
+    Phoenix.PubSub.broadcast(
+      Coupex.PubSub,
+      topic(state.lobby.code),
+      {:room_updated, state.lobby.code}
+    )
+  end
+
+  defp unique_code do
+    code =
+      5
+      |> :crypto.strong_rand_bytes()
+      |> Base.encode32(case: :upper, padding: false)
+      |> binary_part(0, 6)
+
+    case Registry.lookup(Coupex.RoomRegistry, code) do
+      [] -> code
+      _ -> unique_code()
+    end
+  end
+
+  defp normalize_code(code) do
+    code
+    |> to_string()
+    |> String.trim()
+    |> String.upcase()
+  end
+
+  defp schedule_bot_turn(%{game: nil} = state), do: cancel_bot_turn(state)
+  defp schedule_bot_turn(%{game: %{status: :finished}} = state), do: cancel_bot_turn(state)
+
+  defp schedule_bot_turn(state) do
+    if bot_actor_id(state) do
+      if state.bot_turn_ref do
+        state
+      else
+        ref = make_ref()
+        timer_ref = Process.send_after(self(), {:run_bot_turn, ref}, @bot_turn_delay_ms)
+        %{state | bot_turn_ref: ref, bot_turn_timer_ref: timer_ref}
+      end
+    else
+      cancel_bot_turn(state)
+    end
+  end
+
+  defp cancel_bot_turn(%{bot_turn_timer_ref: timer_ref} = state) when is_reference(timer_ref) do
+    Process.cancel_timer(timer_ref)
+    %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
+  end
+
+  defp cancel_bot_turn(state), do: %{state | bot_turn_ref: nil, bot_turn_timer_ref: nil}
 end

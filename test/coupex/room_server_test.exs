@@ -118,9 +118,10 @@ defmodule Coupex.RoomServerTest do
     room_pid = GenServer.whereis(RoomServer.via(code))
 
     :sys.replace_state(room_pid, fn state ->
-      state = %{state | order: ["bot-1", host_id]}
-      state = put_in(state.players[host_id].ready, true)
-      %{state | host_id: "bot-1", game: %{state.game | active_player_id: "bot-1"}}
+      lobby = %{state.lobby | order: ["bot-1", host_id]}
+      lobby = put_in(lobby.players[host_id].ready, true)
+      lobby = %{lobby | host_id: "bot-1"}
+      %{state | lobby: lobby, game: %{state.game | active_player_id: "bot-1"}}
     end)
 
     assert {:ok, restarted} = RoomServer.restart_game(code, "bot-1")
