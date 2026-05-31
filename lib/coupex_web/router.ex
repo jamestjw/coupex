@@ -1,6 +1,22 @@
 defmodule CoupexWeb.Router do
   use CoupexWeb, :router
 
+  @content_security_policy Enum.join(
+                             [
+                               "default-src 'self'",
+                               "script-src 'self'",
+                               "style-src 'self' 'unsafe-inline'",
+                               "img-src 'self' data:",
+                               "font-src 'self' data:",
+                               "connect-src 'self' ws: wss:",
+                               "object-src 'none'",
+                               "base-uri 'self'",
+                               "form-action 'self'",
+                               "frame-ancestors 'self'"
+                             ],
+                             "; "
+                           )
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,7 +24,7 @@ defmodule CoupexWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {CoupexWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    plug :put_secure_browser_headers, %{"content-security-policy" => @content_security_policy}
   end
 
   pipeline :api do
